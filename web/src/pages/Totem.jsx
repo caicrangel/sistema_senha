@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { getSocket } from '../lib/socket.js';
+import { useBranding, usePublicTheme } from '../lib/branding.jsx';
 
 export default function Totem() {
   const [types, setTypes] = useState([]);
@@ -8,6 +9,13 @@ export default function Totem() {
   const [askName, setAskName] = useState(null); // tipo selecionado aguardando nome
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+
+  const { settings } = useBranding();
+  const dark = usePublicTheme(settings.totem_theme);
+
+  const bg = dark ? 'bg-slate-900' : 'bg-slate-100';
+  const title = dark ? 'text-white' : 'text-slate-900';
+  const subtle = dark ? 'text-slate-400' : 'text-slate-500';
 
   const loadTypes = () =>
     api('/admin/service-types', { auth: false }).then(setTypes).catch(() => {});
@@ -36,19 +44,25 @@ export default function Totem() {
     }
   };
 
+  const Logo = () =>
+    settings.logo ? (
+      <img src={settings.logo} alt="Logo" className="mb-6 h-20 object-contain" />
+    ) : null;
+
   if (issued) {
     return (
-      <div className="flex h-full flex-col items-center justify-center bg-slate-900 p-8 text-center">
-        <p className="text-3xl font-medium text-slate-300">Sua senha é</p>
-        <p className="my-8 text-[9rem] font-black leading-none text-white" style={{ color: issued.color }}>
+      <div className={`flex h-full flex-col items-center justify-center p-8 text-center ${bg}`}>
+        <Logo />
+        <p className={`text-3xl font-medium ${subtle}`}>Sua senha é</p>
+        <p className="my-8 text-[9rem] font-black leading-none" style={{ color: issued.color }}>
           {issued.code}
         </p>
-        <p className="text-2xl text-slate-300">{issued.service_name}</p>
-        {issued.customer_name && <p className="mt-2 text-xl text-slate-400">{issued.customer_name}</p>}
-        <p className="mt-10 text-lg text-slate-500">Aguarde ser chamado no painel</p>
+        <p className={`text-2xl ${title}`}>{issued.service_name}</p>
+        {issued.customer_name && <p className={`mt-2 text-xl ${subtle}`}>{issued.customer_name}</p>}
+        <p className={`mt-10 text-lg ${subtle}`}>Aguarde ser chamado no painel</p>
         <button
           onClick={() => setIssued(null)}
-          className="mt-8 rounded-2xl bg-slate-700 px-10 py-4 text-xl font-semibold text-white active:bg-slate-600"
+          className={`mt-8 rounded-2xl px-10 py-4 text-xl font-semibold ${dark ? 'bg-slate-700 text-white active:bg-slate-600' : 'bg-white text-slate-800 shadow active:bg-slate-200'}`}
         >
           OK
         </button>
@@ -58,20 +72,23 @@ export default function Totem() {
 
   if (askName) {
     return (
-      <div className="flex h-full flex-col items-center justify-center bg-slate-900 p-8">
-        <p className="mb-2 text-3xl font-bold text-white">{askName.name}</p>
-        <p className="mb-8 text-xl text-slate-400">Digite seu nome (opcional)</p>
+      <div className={`flex h-full flex-col items-center justify-center p-8 ${bg}`}>
+        <Logo />
+        <p className={`mb-2 text-3xl font-bold ${title}`}>{askName.name}</p>
+        <p className={`mb-8 text-xl ${subtle}`}>Digite seu nome (opcional)</p>
         <input
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Seu nome"
-          className="w-full max-w-xl rounded-2xl border-2 border-slate-600 bg-slate-800 px-6 py-5 text-center text-3xl text-white outline-none focus:border-blue-500"
+          className={`w-full max-w-xl rounded-2xl border-2 px-6 py-5 text-center text-3xl outline-none focus:border-brand ${
+            dark ? 'border-slate-600 bg-slate-800 text-white' : 'border-slate-300 bg-white text-slate-900'
+          }`}
         />
         <div className="mt-8 flex gap-4">
           <button
             onClick={() => { setAskName(null); setName(''); }}
-            className="rounded-2xl bg-slate-700 px-10 py-5 text-2xl font-semibold text-white active:bg-slate-600"
+            className={`rounded-2xl px-10 py-5 text-2xl font-semibold ${dark ? 'bg-slate-700 text-white active:bg-slate-600' : 'bg-white text-slate-800 shadow active:bg-slate-200'}`}
           >
             Voltar
           </button>
@@ -88,11 +105,12 @@ export default function Totem() {
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center bg-slate-900 p-8">
-      <h1 className="mb-3 text-5xl font-black text-white">Bem-vindo!</h1>
-      <p className="mb-12 text-2xl text-slate-400">Toque no tipo de atendimento desejado</p>
+    <div className={`flex h-full flex-col items-center justify-center p-8 ${bg}`}>
+      <Logo />
+      <h1 className={`mb-3 text-5xl font-black ${title}`}>Bem-vindo!</h1>
+      <p className={`mb-12 text-2xl ${subtle}`}>Toque no tipo de atendimento desejado</p>
       {error && (
-        <p className="mb-6 rounded-xl bg-red-500/20 px-6 py-3 text-xl text-red-300">{error}</p>
+        <p className="mb-6 rounded-xl bg-red-500/20 px-6 py-3 text-xl text-red-500">{error}</p>
       )}
       <div className="grid w-full max-w-3xl gap-6">
         {types.map((t) => (
@@ -107,7 +125,7 @@ export default function Totem() {
         ))}
       </div>
       {types.length === 0 && (
-        <p className="text-xl text-slate-500">Nenhum tipo de atendimento configurado</p>
+        <p className={`text-xl ${subtle}`}>Nenhum tipo de atendimento configurado</p>
       )}
     </div>
   );

@@ -50,6 +50,21 @@ CREATE TABLE IF NOT EXISTS tickets (
 
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(created_at);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS ads (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  image TEXT NOT NULL,
+  duration_sec INT NOT NULL DEFAULT 10,
+  sort_order INT NOT NULL DEFAULT 0,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 export async function migrate() {
@@ -78,4 +93,13 @@ export async function seed(bcrypt) {
   if (c[0].n === 0) {
     await query(`INSERT INTO counters (name) VALUES ('Guichê 1'), ('Guichê 2')`);
   }
+  await query(
+    `INSERT INTO settings (key, value) VALUES
+     ('company_name', 'Clínica'),
+     ('brand_color', '#2563eb'),
+     ('logo', ''),
+     ('totem_theme', 'dark'),
+     ('panel_theme', 'dark')
+     ON CONFLICT (key) DO NOTHING`
+  );
 }

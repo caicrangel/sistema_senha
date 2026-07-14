@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { api, saveSession, getToken } from '../lib/api.js';
 import { Button, Input } from '../components/ui.jsx';
+import { useBranding } from '../lib/branding.jsx';
 
 export default function Login() {
+  const { settings } = useBranding();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -32,14 +34,23 @@ export default function Login() {
   };
 
   return (
-    <div className="flex h-full items-center justify-center bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 p-4">
-      <div className="w-full max-w-md rounded-3xl bg-white p-10 shadow-2xl">
+    <div
+      className="flex h-full items-center justify-center p-4"
+      style={{ background: `linear-gradient(135deg, var(--brand, #2563eb), var(--brand-dark, #1d4ed8), #0f172a)` }}
+    >
+      <div className="w-full max-w-md rounded-3xl bg-white p-10 shadow-2xl dark:bg-slate-900">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-blue-600 text-3xl font-black text-white">
-            S
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900">Sistema de Senhas</h1>
-          <p className="mt-1 text-sm text-slate-500">Acesso de atendentes e gestão</p>
+          {settings.logo ? (
+            <img src={settings.logo} alt="Logo" className="mx-auto mb-4 h-16 object-contain" />
+          ) : (
+            <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-brand text-3xl font-black text-white">
+              {(settings.company_name || 'S').charAt(0).toUpperCase()}
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            {settings.company_name || 'Sistema de Senhas'}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Acesso de atendentes e gestão</p>
         </div>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <Input

@@ -6,13 +6,13 @@ const INK_MUTED = '#898781';
 
 export function StatTile({ label, value, hint, accent = '#2a78d6' }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-center gap-2">
         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: accent }} />
-        <span className="text-sm font-medium text-slate-500">{label}</span>
+        <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</span>
       </div>
-      <div className="mt-2 text-3xl font-bold text-slate-900">{value ?? '—'}</div>
-      {hint && <div className="mt-1 text-xs text-slate-400">{hint}</div>}
+      <div className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">{value ?? '—'}</div>
+      {hint && <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">{hint}</div>}
     </div>
   );
 }
@@ -29,7 +29,7 @@ export function BarChart({ data, color = '#2a78d6', height = 180, formatLabel })
           title={`${formatLabel ? formatLabel(d.label) : d.label}: ${d.value}`}
         >
           {d.value > 0 && d.value === max && (
-            <span className="mb-1 text-xs font-semibold text-slate-700 tabular-nums">{d.value}</span>
+            <span className="mb-1 text-xs font-semibold text-slate-700 tabular-nums dark:text-slate-200">{d.value}</span>
           )}
           <div
             className="w-full max-w-8 rounded-t transition-opacity group-hover:opacity-80"
@@ -45,7 +45,7 @@ export function BarChart({ data, color = '#2a78d6', height = 180, formatLabel })
           </span>
         </div>
       ))}
-      {data.length === 0 && <p className="w-full self-center text-center text-sm text-slate-400">Sem dados no período</p>}
+      {data.length === 0 && <p className="w-full self-center text-center text-sm text-slate-400 dark:text-slate-500">Sem dados no período</p>}
     </div>
   );
 }
@@ -58,15 +58,15 @@ export function HBarChart({ data, defaultColor = '#2a78d6', valueSuffix = '' }) 
       {data.map((d) => (
         <div key={d.label} title={`${d.label}: ${d.value}${valueSuffix}`}>
           <div className="mb-1 flex items-center justify-between text-sm">
-            <span className="flex items-center gap-2 text-slate-700">
+            <span className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
               <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: d.color || defaultColor }} />
               {d.label}
             </span>
-            <span className="font-semibold tabular-nums text-slate-900">
+            <span className="font-semibold tabular-nums text-slate-900 dark:text-white">
               {d.value}{valueSuffix}
             </span>
           </div>
-          <div className="h-2.5 w-full rounded-full bg-slate-100">
+          <div className="h-2.5 w-full rounded-full bg-slate-100 dark:bg-slate-800">
             <div
               className="h-2.5 rounded-full"
               style={{ width: `${(d.value / max) * 100}%`, backgroundColor: d.color || defaultColor, minWidth: d.value > 0 ? 6 : 0 }}
@@ -74,7 +74,7 @@ export function HBarChart({ data, defaultColor = '#2a78d6', valueSuffix = '' }) 
           </div>
         </div>
       ))}
-      {data.length === 0 && <p className="text-sm text-slate-400">Sem dados no período</p>}
+      {data.length === 0 && <p className="text-sm text-slate-400 dark:text-slate-500">Sem dados no período</p>}
     </div>
   );
 }

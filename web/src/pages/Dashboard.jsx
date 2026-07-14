@@ -58,19 +58,19 @@ export default function Dashboard() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card>
-          <h2 className="mb-6 font-semibold text-slate-900">Senhas por hora</h2>
+          <h2 className="mb-6 font-semibold text-slate-900 dark:text-white">Senhas por hora</h2>
           <BarChart data={byHour} formatLabel={(h) => `${h}h`} />
         </Card>
 
         <Card>
-          <h2 className="mb-6 font-semibold text-slate-900">Por tipo de atendimento</h2>
+          <h2 className="mb-6 font-semibold text-slate-900 dark:text-white">Por tipo de atendimento</h2>
           <HBarChart
             data={(data?.byType || []).map((x) => ({ label: x.name, value: x.total, color: x.color }))}
           />
         </Card>
 
         <Card className="lg:col-span-2">
-          <h2 className="mb-6 font-semibold text-slate-900">Atendimentos por atendente</h2>
+          <h2 className="mb-6 font-semibold text-slate-900 dark:text-white">Atendimentos por atendente</h2>
           <HBarChart
             data={(data?.byAttendant || []).map((x) => ({
               label: `${x.name}${x.avg_service_min != null ? ` · média ${x.avg_service_min} min` : ''}`,

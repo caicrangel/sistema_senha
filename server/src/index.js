@@ -8,19 +8,21 @@ import authRoutes from './routes/auth.routes.js';
 import ticketRoutes from './routes/tickets.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import reportRoutes from './routes/reports.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 
 const app = express();
 const server = http.createServer(app);
 export const io = new Server(server, { cors: { origin: '*' }, path: '/socket.io' });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '8mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes(io));
 app.use('/api/admin', adminRoutes(io));
 app.use('/api/reports', reportRoutes);
+app.use('/api', settingsRoutes(io));
 
 app.use((err, _req, res, _next) => {
   console.error(err);

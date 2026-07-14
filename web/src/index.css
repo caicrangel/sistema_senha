@@ -1,7 +1,13 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Cor da marca — sobrescrita em tempo de execução pelas configurações */
+  --color-brand: var(--brand, #2563eb);
+  --color-brand-dark: var(--brand-dark, #1d4ed8);
+  --color-brand-soft: var(--brand-soft, #dbeafe);
 }
 
 html, body, #root {
@@ -15,4 +21,13 @@ html, body, #root {
 
 .animate-call {
   animation: pulse-call 1s ease-in-out 3;
+}
+
+@keyframes ad-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-ad {
+  animation: ad-fade 0.6s ease-in;
 }
