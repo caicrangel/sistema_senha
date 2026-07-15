@@ -27,6 +27,7 @@ router.post('/login', async (req, res, next) => {
         username: user.username,
         role: user.role,
         permissions: parsePermissions(user.permissions),
+        specialty_id: user.specialty_id || null,
       },
     });
   } catch (e) {

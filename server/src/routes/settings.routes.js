@@ -3,7 +3,7 @@ import { query } from '../db.js';
 import { requireAuth, requireAdmin } from '../auth.js';
 
 const SETTING_KEYS = [
-  'company_name', 'brand_color', 'logo', 'app_domain',
+  'company_name', 'brand_color', 'logo', 'app_domain', 'flow_medical',
   'totem_theme',
   'panel_theme', 'panel_sound', 'panel_last_calls',
   'smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_pass',

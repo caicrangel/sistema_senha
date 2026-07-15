@@ -75,6 +75,30 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS
 
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS return_count INT NOT NULL DEFAULT 0;
 
+-- Fluxo médico opcional (recepção → médico). Só é usado quando habilitado nas configurações.
+CREATE TABLE IF NOT EXISTS specialties (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS rooms (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- 'reception' = na recepção; 'medical' = encaminhada ao médico
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'reception';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS specialty_id INT REFERENCES specialties(id);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS room_id INT REFERENCES rooms(id);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS doctor_id INT REFERENCES users(id);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS forwarded_at TIMESTAMPTZ;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS med_called_at TIMESTAMPTZ;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS med_started_at TIMESTAMPTZ;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS specialty_id INT REFERENCES specialties(id);
+
 CREATE TABLE IF NOT EXISTS email_schedules (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -121,6 +145,14 @@ export async function seed(bcrypt) {
   if (c[0].n === 0) {
     await query(`INSERT INTO counters (name) VALUES ('Guichê 1'), ('Guichê 2')`);
   }
+  const { rows: sp } = await query('SELECT COUNT(*)::int AS n FROM specialties');
+  if (sp[0].n === 0) {
+    await query(`INSERT INTO specialties (name) VALUES ('Clínico Geral'), ('Pediatria')`);
+  }
+  const { rows: rm } = await query('SELECT COUNT(*)::int AS n FROM rooms');
+  if (rm[0].n === 0) {
+    await query(`INSERT INTO rooms (name) VALUES ('Consultório 1'), ('Consultório 2')`);
+  }
   await query(
     `INSERT INTO settings (key, value) VALUES
      ('company_name', 'Clínica'),
@@ -135,7 +167,8 @@ export async function seed(bcrypt) {
      ('pwd_require_upper', '0'),
      ('pwd_require_lower', '0'),
      ('pwd_require_number', '0'),
-     ('pwd_require_special', '0')
+     ('pwd_require_special', '0'),
+     ('flow_medical', '0')
      ON CONFLICT (key) DO NOTHING`
   );
 }

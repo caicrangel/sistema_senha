@@ -36,8 +36,10 @@ export default function Layout() {
     }`;
 
   // [rota, ícone, rótulo, permissão] — Configurações é sempre exclusiva do superusuário
+  const medicalOn = settings.flow_medical === '1';
   const links = [
     ['/atendimento', '🎧', 'Atendimento', 'atendimento'],
+    ...(medicalOn ? [['/medico', '🩺', 'Consultório', 'medico']] : []),
     ['/senhas', '🎫', 'Gestão de Senhas', 'senhas'],
     ['/dashboard', '📊', 'Dashboard', 'dashboard'],
     ['/relatorios', '📄', 'Relatórios', 'relatorios'],

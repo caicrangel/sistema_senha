@@ -124,7 +124,7 @@ export default function Monitor() {
                 </span>
               )}
               <span className="mt-4 text-4xl font-bold text-amber-500">
-                {cur.counter_name || 'Guichê'}
+                {cur.destination || cur.counter_name || 'Guichê'}
               </span>
             </div>
           ) : (
@@ -155,7 +155,7 @@ export default function Monitor() {
                     <span className={`truncate text-lg ${subtle}`}>{t.customer_name}</span>
                   )}
                 </div>
-                <span className="shrink-0 text-lg font-semibold">{t.counter_name}</span>
+                <span className="shrink-0 text-lg font-semibold">{t.destination || t.counter_name}</span>
               </div>
             ))}
             {state.lastCalls.length === 0 && (

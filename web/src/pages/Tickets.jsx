@@ -5,27 +5,27 @@ import { Card, PageTitle, Button, StatusBadge } from '../components/ui.jsx';
 import { fmtDur, elapsedSec } from '../lib/time.js';
 
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString('pt-BR') : '—');
+const sum = (...v) => v.reduce((a, x) => a + (x || 0), 0);
 
-// Tempo de espera (emissão → chamada). Ainda aguardando = cronômetro correndo.
+// Espera total (recepção + médico). A fase em curso conta ao vivo.
 function WaitCell({ ticket: t, now }) {
-  if (t.wait_sec != null) return <span>{fmtDur(t.wait_sec)}</span>;
+  const done = sum(t.wait_sec, t.med_wait_sec);
   if (t.status === 'waiting') {
-    return (
-      <span className="text-amber-600 dark:text-amber-400">⏱ {fmtDur(elapsedSec(t.created_at, now))}</span>
-    );
+    // aguardando: recepção conta desde a emissão; médico desde o encaminhamento
+    const live = elapsedSec(t.stage === 'medical' ? t.forwarded_at : t.created_at, now);
+    return <span className="text-amber-600 dark:text-amber-400">⏱ {fmtDur(done + live)}</span>;
   }
-  return <span>—</span>;
+  return <span>{done > 0 || t.wait_sec != null ? fmtDur(done) : '—'}</span>;
 }
 
-// Tempo de atendimento (chamada → finalização). Em andamento = cronômetro correndo.
+// Atendimento total (recepção + médico). A fase em curso conta ao vivo.
 function ServiceCell({ ticket: t, now }) {
-  if (t.status === 'done') return <span>{fmtDur(t.service_sec)}</span>;
+  const done = sum(t.service_sec, t.med_service_sec);
   if (t.status === 'called' || t.status === 'in_service') {
-    return (
-      <span className="font-semibold text-blue-600 dark:text-blue-400">⏱ {fmtDur(elapsedSec(t.called_at, now))}</span>
-    );
+    const live = elapsedSec(t.stage === 'medical' ? t.med_called_at : t.called_at, now);
+    return <span className="font-semibold text-blue-600 dark:text-blue-400">⏱ {fmtDur(done + live)}</span>;
   }
-  return <span>—</span>;
+  return <span>{t.status === 'done' ? fmtDur(done) : '—'}</span>;
 }
 
 // Tempo total da operação (emissão → finalização). Antes de finalizar = correndo.
@@ -38,6 +38,8 @@ function TotalCell({ ticket: t, now }) {
     <span className="text-slate-500 dark:text-slate-400">⏱ {fmtDur(elapsedSec(t.created_at, now))}</span>
   );
 }
+
+const STAGE_LABEL = { reception: 'Recepção', medical: 'Médico' };
 
 export default function Tickets() {
   const [tickets, setTickets] = useState([]);
@@ -110,7 +112,7 @@ export default function Tickets() {
               <th className="px-5 py-3">Nome</th>
               <th className="px-5 py-3">Tipo</th>
               <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3">Guichê</th>
+              <th className="px-5 py-3">Fase / Destino</th>
               <th className="px-5 py-3">Atendente</th>
               <th className="px-5 py-3">Emitida</th>
               <th className="px-5 py-3">Chamada</th>
@@ -131,8 +133,15 @@ export default function Tickets() {
                 <td className="px-5 py-3 text-slate-900 dark:text-white">{t.customer_name || '—'}</td>
                 <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{t.service_name}</td>
                 <td className="px-5 py-3"><StatusBadge status={t.status} /></td>
-                <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{t.counter_name || '—'}</td>
-                <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{t.attendant_name || '—'}</td>
+                <td className="px-5 py-3 text-slate-600 dark:text-slate-300">
+                  <span className={`mr-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${t.stage === 'medical' ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/50 dark:text-teal-200' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+                    {STAGE_LABEL[t.stage] || 'Recepção'}
+                  </span>
+                  {t.destination && t.destination !== 'Guichê' && t.status !== 'waiting' ? t.destination : ''}
+                </td>
+                <td className="px-5 py-3 text-slate-600 dark:text-slate-300">
+                  {t.stage === 'medical' ? (t.doctor_name || t.attendant_name || '—') : (t.attendant_name || '—')}
+                </td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmtTime(t.created_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmtTime(t.called_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">

@@ -10,6 +10,7 @@ const TABS = [
   ['totem', '🖥️ Tela Totem'],
   ['tv', '📺 Painel TV'],
   ['system', '🏢 Sistema'],
+  ['medical', '🩺 Fluxo Médico'],
   ['email', '📧 E-mail'],
   ['security', '🔐 Segurança'],
   ['db', '🗄️ Banco de dados'],
@@ -17,7 +18,8 @@ const TABS = [
 
 // Telas que podem ser liberadas por usuário (Configurações é sempre do superusuário)
 const PERM_OPTIONS = [
-  ['atendimento', 'Atendimento (chamar senhas)'],
+  ['atendimento', 'Atendimento (recepção)'],
+  ['medico', 'Consultório (médico)'],
   ['senhas', 'Gestão de Senhas'],
   ['dashboard', 'Dashboard'],
   ['relatorios', 'Relatórios'],
@@ -51,6 +53,7 @@ export default function Settings() {
       {tab === 'totem' && <TotemTab />}
       {tab === 'tv' && <PanelTvTab />}
       {tab === 'system' && <SystemTab />}
+      {tab === 'medical' && <MedicalTab />}
       {tab === 'email' && <EmailTab />}
       {tab === 'security' && <SecurityTab />}
       {tab === 'db' && <DatabaseTab />}
@@ -338,6 +341,164 @@ function SchedulesCard() {
       {msg && <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{msg}</p>}
       {error && <p className="mt-3 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------- Fluxo Médico
+
+function MedicalTab() {
+  const { settings, setSettings } = useBranding();
+  const [enabled, setEnabled] = useState(settings.flow_medical === '1');
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => setEnabled(settings.flow_medical === '1'), [settings.flow_medical]);
+
+  const toggle = async (v) => {
+    setEnabled(v);
+    setMsg('');
+    try {
+      const next = await api('/admin/settings', { method: 'PUT', body: { flow_medical: v ? '1' : '0' } });
+      setSettings(next);
+      setMsg(v ? 'Fluxo médico habilitado.' : 'Fluxo médico desabilitado — o sistema opera só com a recepção.');
+      setTimeout(() => setMsg(''), 3500);
+    } catch {
+      setEnabled(!v);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Card>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-semibold text-slate-900 dark:text-white">Fluxo com médico (recepção → consultório)</h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+              Quando habilitado, a recepção faz a triagem e encaminha a mesma senha para a fila de um
+              médico, que chama o paciente no consultório. Desligado, o sistema funciona apenas com a
+              recepção (comportamento padrão).
+            </p>
+          </div>
+          <label className="relative inline-flex cursor-pointer items-center">
+            <input type="checkbox" className="peer sr-only" checked={enabled} onChange={(e) => toggle(e.target.checked)} />
+            <div className="h-7 w-12 rounded-full bg-slate-300 peer-checked:bg-brand after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-5 dark:bg-slate-600" />
+          </label>
+        </div>
+        {msg && <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{msg}</p>}
+        <div className="mt-4 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+          <p className="mb-1 font-semibold text-slate-700 dark:text-slate-300">Para usar o fluxo médico:</p>
+          <p>1. Cadastre as <b>especialidades</b> e os <b>consultórios</b> abaixo.</p>
+          <p>2. Em <b>Usuários</b>, crie os médicos com a permissão <b>Consultório (médico)</b> e escolha a especialidade de cada um.</p>
+          <p>3. Na recepção, o atendente conclui a triagem e clica em <b>Encaminhar para o médico</b>, escolhendo a especialidade.</p>
+          <p>4. O médico vê sua fila em <b>Consultório</b> e chama os pacientes; a chamada aparece no Painel TV com o consultório.</p>
+        </div>
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <SimpleCrud
+          title="Especialidades"
+          listPath="/admin/specialties?all=1"
+          basePath="/admin/specialties"
+          placeholder="Ex.: Cardiologia"
+          inUseHint="A especialidade fica indisponível para novos encaminhamentos, mas o histórico é mantido."
+        />
+        <SimpleCrud
+          title="Consultórios"
+          listPath="/admin/rooms"
+          basePath="/admin/rooms"
+          placeholder="Ex.: Consultório 3"
+        />
+      </div>
+    </div>
+  );
+}
+
+// CRUD genérico de itens com apenas nome + ativo (especialidades, consultórios)
+function SimpleCrud({ title, listPath, basePath, placeholder, inUseHint }) {
+  const { items, error, setError, load } = useCrud(listPath);
+  const [name, setName] = useState('');
+
+  const create = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await api(basePath, { method: 'POST', body: { name } });
+      setName('');
+      load();
+    } catch (e2) {
+      setError(e2.message);
+    }
+  };
+
+  return (
+    <Card>
+      <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">{title}</h2>
+      <form onSubmit={create} className="mb-4 flex items-end gap-2">
+        <Input label={`Novo — ${title.toLowerCase()}`} placeholder={placeholder} value={name}
+          onChange={(e) => setName(e.target.value)} required className="flex-1" />
+        <Button type="submit">Adicionar</Button>
+      </form>
+      {error && <p className="mb-3 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+      <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
+        {items.map((it) => (
+          <SimpleRow key={it.id} item={it} basePath={basePath} onSaved={load} inUseHint={inUseHint} />
+        ))}
+        {items.length === 0 && <p className="py-4 text-sm text-slate-400 dark:text-slate-500">Nenhum item cadastrado</p>}
+      </div>
+    </Card>
+  );
+}
+
+function SimpleRow({ item, basePath, onSaved, inUseHint }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(item.name);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    setError('');
+    try {
+      await api(`${basePath}/${item.id}`, { method: 'PUT', body: { name } });
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const toggle = async () => {
+    await api(`${basePath}/${item.id}`, { method: 'PUT', body: { active: !item.active } });
+    onSaved();
+  };
+  const remove = async () => {
+    if (!confirm(`Excluir "${item.name}"?${inUseHint ? ' ' + inUseHint : ''}`)) return;
+    try {
+      await api(`${basePath}/${item.id}`, { method: 'DELETE' });
+      onSaved();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-end gap-2 py-3">
+        <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} className="flex-1" />
+        <Button onClick={save}>Salvar</Button>
+        <Button variant="secondary" onClick={() => { setEditing(false); setName(item.name); setError(''); }}>Cancelar</Button>
+        {error && <span className="text-sm text-red-600">{error}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 py-3">
+      <span className={`flex-1 ${item.active ? 'font-medium text-slate-900 dark:text-white' : 'text-slate-400 line-through'}`}>
+        {item.name}
+      </span>
+      <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => setEditing(true)}>✏️ Editar</Button>
+      <Button variant={item.active ? 'secondary' : 'success'} className="px-3 py-1 text-xs" onClick={toggle}>
+        {item.active ? 'Desativar' : 'Ativar'}
+      </Button>
+      <Button variant="danger" className="px-3 py-1 text-xs" onClick={remove}>Excluir</Button>
+    </div>
   );
 }
 
@@ -1171,24 +1332,43 @@ function PermissionPicker({ value, onChange, disabled }) {
   );
 }
 
+// Seletor de especialidade — aparece quando o usuário tem permissão de médico
+function SpecialtyPicker({ specialties, value, onChange }) {
+  return (
+    <Select label="Especialidade do médico" value={value || ''} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Todas as especialidades (vê todos)</option>
+      {specialties.map((sp) => (
+        <option key={sp.id} value={sp.id}>{sp.name}</option>
+      ))}
+    </Select>
+  );
+}
+
 function Users() {
   const { items, error, setError, load } = useCrud('/admin/users');
+  const [specialties, setSpecialties] = useState([]);
   const [form, setForm] = useState({
     name: '', username: '', password: '', role: 'attendant',
-    permissions: ['atendimento', 'senhas'],
+    permissions: ['atendimento', 'senhas'], specialty_id: '',
   });
+
+  useEffect(() => {
+    api('/admin/specialties?all=1').then(setSpecialties).catch(() => {});
+  }, []);
 
   const create = async (e) => {
     e.preventDefault();
     setError('');
     try {
       await api('/admin/users', { method: 'POST', body: form });
-      setForm({ name: '', username: '', password: '', role: 'attendant', permissions: ['atendimento', 'senhas'] });
+      setForm({ name: '', username: '', password: '', role: 'attendant', permissions: ['atendimento', 'senhas'], specialty_id: '' });
       load();
     } catch (e2) {
       setError(e2.message);
     }
   };
+
+  const isDoctor = form.permissions.includes('medico');
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -1211,6 +1391,10 @@ function Users() {
             disabled={form.role === 'admin'}
             onChange={(permissions) => setForm({ ...form, permissions })}
           />
+          {isDoctor && form.role !== 'admin' && (
+            <SpecialtyPicker specialties={specialties} value={form.specialty_id}
+              onChange={(specialty_id) => setForm({ ...form, specialty_id })} />
+          )}
           {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
           <Button type="submit">Criar usuário</Button>
         </form>
@@ -1222,7 +1406,7 @@ function Users() {
         </p>
         <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
           {items.map((u) => (
-            <UserRow key={u.id} user={u} onSaved={load} />
+            <UserRow key={u.id} user={u} specialties={specialties} onSaved={load} />
           ))}
         </div>
       </Card>
@@ -1230,19 +1414,21 @@ function Users() {
   );
 }
 
-function UserRow({ user: u, onSaved }) {
+function UserRow({ user: u, specialties, onSaved }) {
   const me = getUser();
   const isSelf = me?.id === u.id;
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     name: u.name, role: u.role, password: '', permissions: u.permissions || [],
+    specialty_id: u.specialty_id || '',
   });
   const [error, setError] = useState('');
+  const isDoctor = form.permissions.includes('medico');
 
   const save = async () => {
     setError('');
     try {
-      const body = { name: form.name, role: form.role, permissions: form.permissions };
+      const body = { name: form.name, role: form.role, permissions: form.permissions, specialty_id: form.specialty_id || null };
       if (form.password) body.password = form.password;
       await api(`/admin/users/${u.id}`, { method: 'PUT', body });
       setEditing(false);
@@ -1287,6 +1473,10 @@ function UserRow({ user: u, onSaved }) {
           disabled={form.role === 'admin'}
           onChange={(permissions) => setForm({ ...form, permissions })}
         />
+        {isDoctor && form.role !== 'admin' && (
+          <SpecialtyPicker specialties={specialties || []} value={form.specialty_id}
+            onChange={(specialty_id) => setForm({ ...form, specialty_id })} />
+        )}
         {isSelf && (
           <p className="text-xs text-slate-400 dark:text-slate-500">
             Você não pode alterar o próprio perfil (evita ficar sem superusuário).
@@ -1295,7 +1485,7 @@ function UserRow({ user: u, onSaved }) {
         {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
         <div className="flex gap-2">
           <Button onClick={save}>Salvar alterações</Button>
-          <Button variant="secondary" onClick={() => { setEditing(false); setError(''); setForm({ name: u.name, role: u.role, password: '' }); }}>
+          <Button variant="secondary" onClick={() => { setEditing(false); setError(''); setForm({ name: u.name, role: u.role, password: '', permissions: u.permissions || [], specialty_id: u.specialty_id || '' }); }}>
             Cancelar
           </Button>
         </div>
@@ -1311,6 +1501,11 @@ function UserRow({ user: u, onSaved }) {
           <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             {u.role === 'admin' ? 'Superusuário' : 'Atendente'}
           </span>
+          {u.specialty_name && (
+            <span className="ml-2 rounded-full bg-brand-soft px-2 py-0.5 text-xs font-semibold text-brand-dark dark:bg-slate-700 dark:text-slate-200">
+              🩺 {u.specialty_name}
+            </span>
+          )}
           {isSelf && <span className="ml-2 text-xs text-slate-400">(você)</span>}
         </div>
         <div className="text-xs text-slate-500 dark:text-slate-400">

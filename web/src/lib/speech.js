@@ -49,7 +49,8 @@ export async function announceTicket(ticket) {
   await playChime();
   const parts = [`Senha ${spellCode(ticket.code)}`];
   if (ticket.customer_name) parts.push(ticket.customer_name);
-  if (ticket.counter_name) parts.push(ticket.counter_name);
+  const dest = ticket.destination || ticket.counter_name;
+  if (dest) parts.push(dest);
   const utter = new SpeechSynthesisUtterance(parts.join('. '));
   utter.lang = 'pt-BR';
   if (ptVoice) utter.voice = ptVoice;

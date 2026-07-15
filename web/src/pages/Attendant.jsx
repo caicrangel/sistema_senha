@@ -3,10 +3,15 @@ import { api } from '../lib/api.js';
 import { getSocket } from '../lib/socket.js';
 import { Card, PageTitle, Button, Select, StatusBadge } from '../components/ui.jsx';
 import { fmtClock, fmtDur, elapsedSec } from '../lib/time.js';
+import { useBranding } from '../lib/branding.jsx';
 
 export default function Attendant() {
+  const { settings } = useBranding();
+  const medicalOn = settings.flow_medical === '1';
   const [queue, setQueue] = useState([]);
   const [counters, setCounters] = useState([]);
+  const [specialties, setSpecialties] = useState([]);
+  const [specialtyId, setSpecialtyId] = useState('');
   const [counterId, setCounterId] = useState(() => localStorage.getItem('senha_counter') || '');
   const [current, setCurrent] = useState(null);
   const [error, setError] = useState('');
@@ -23,6 +28,11 @@ export default function Attendant() {
     api('/tickets/queue').then(setQueue).catch(() => {});
     api('/tickets/mine').then(setCurrent).catch(() => {});
   }, []);
+
+  // Carrega especialidades quando o fluxo médico está (ou passa a estar) ativo
+  useEffect(() => {
+    if (medicalOn) api('/admin/specialties').then(setSpecialties).catch(() => {});
+  }, [medicalOn]);
 
   useEffect(() => {
     load();
@@ -61,6 +71,15 @@ export default function Attendant() {
       if (!confirm(`Adiantar a senha ${ticket.code}${ticket.customer_name ? ` (${ticket.customer_name})` : ''}? Ela será chamada fora da ordem da fila.`)) return;
       const t = await api(`/tickets/${ticket.id}/call`, { method: 'POST', body: { counter_id: Number(counterId) } });
       setCurrent(t);
+    });
+
+  // Encaminhar para o médico: triagem concluída, senha entra na fila do médico
+  const forward = () =>
+    act(async () => {
+      if (!specialtyId) throw new Error('Selecione a especialidade para encaminhar');
+      await api(`/tickets/${current.id}/forward`, { method: 'POST', body: { specialty_id: Number(specialtyId) } });
+      setCurrent(null);
+      setSpecialtyId('');
     });
 
   // Devolver à fila: a senha mantém a data de chegada, então volta para a
@@ -134,7 +153,19 @@ export default function Attendant() {
                 )}
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
+              {/* Fluxo médico: escolher especialidade antes de encaminhar */}
+              {medicalOn && (
+                <div className="mt-3">
+                  <Select value={specialtyId} onChange={(e) => setSpecialtyId(e.target.value)}>
+                    <option value="">Encaminhar para… (especialidade)</option>
+                    {specialties.map((sp) => (
+                      <option key={sp.id} value={sp.id}>{sp.name}</option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <Button variant="secondary" disabled={busy}
                   onClick={() => act(() => api(`/tickets/${current.id}/recall`, { method: 'POST' }))}>
                   🔁 Rechamar
@@ -145,10 +176,17 @@ export default function Attendant() {
                     ▶️ Iniciar
                   </Button>
                 )}
-                <Button variant="success" disabled={busy}
-                  onClick={() => act(async () => { await api(`/tickets/${current.id}/finish`, { method: 'POST' }); setCurrent(null); })}>
-                  ✔ Finalizar
-                </Button>
+                {medicalOn ? (
+                  <Button variant="success" disabled={busy || !specialtyId} className="col-span-2"
+                    onClick={forward}>
+                    🩺 Encaminhar para o médico
+                  </Button>
+                ) : (
+                  <Button variant="success" disabled={busy}
+                    onClick={() => act(async () => { await api(`/tickets/${current.id}/finish`, { method: 'POST' }); setCurrent(null); })}>
+                    ✔ Finalizar
+                  </Button>
+                )}
                 {current.status === 'called' && (
                   <Button variant="danger" disabled={busy}
                     onClick={() => act(async () => { await api(`/tickets/${current.id}/no-show`, { method: 'POST' }); setCurrent(null); })}>

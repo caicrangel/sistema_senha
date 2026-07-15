@@ -32,6 +32,7 @@ export const homeScreen = (u) => {
   if (u.role === 'admin') return '/dashboard';
   const p = u.permissions || [];
   if (p.includes('atendimento')) return '/atendimento';
+  if (p.includes('medico')) return '/medico';
   if (p.includes('senhas')) return '/senhas';
   if (p.includes('dashboard')) return '/dashboard';
   if (p.includes('relatorios')) return '/relatorios';

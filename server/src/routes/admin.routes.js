@@ -141,11 +141,118 @@ export default function adminRoutes(io) {
     }
   });
 
+  // ------- Especialidades (fluxo médico) -------
+  router.get('/specialties', requireAuth, async (req, res, next) => {
+    try {
+      const all = req.query.all === '1';
+      const { rows } = await query(
+        `SELECT * FROM specialties ${all ? '' : 'WHERE active = TRUE'} ORDER BY id`
+      );
+      res.json(rows);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.post('/specialties', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const { name } = req.body || {};
+      if (!name?.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+      const { rows } = await query('INSERT INTO specialties (name) VALUES ($1) RETURNING *', [name.trim()]);
+      io.emit('config:update');
+      res.status(201).json(rows[0]);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.put('/specialties/:id', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const { name, active } = req.body || {};
+      const { rows } = await query(
+        `UPDATE specialties SET name = COALESCE($1, name), active = COALESCE($2, active)
+         WHERE id = $3 RETURNING *`,
+        [name?.trim(), active, req.params.id]
+      );
+      if (!rows[0]) return res.status(404).json({ error: 'Especialidade não encontrada' });
+      io.emit('config:update');
+      res.json(rows[0]);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.delete('/specialties/:id', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      await query('DELETE FROM specialties WHERE id = $1', [req.params.id]);
+      res.json({ ok: true });
+    } catch (e) {
+      if (e.code === '23503') {
+        return res.status(400).json({
+          error: 'Esta especialidade está em uso e não pode ser excluída. Desative-a.',
+        });
+      }
+      next(e);
+    }
+  });
+
+  // ------- Consultórios (fluxo médico) -------
+  router.get('/rooms', requireAuth, async (_req, res, next) => {
+    try {
+      const { rows } = await query('SELECT * FROM rooms ORDER BY id');
+      res.json(rows);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.post('/rooms', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const { name } = req.body || {};
+      if (!name?.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+      const { rows } = await query('INSERT INTO rooms (name) VALUES ($1) RETURNING *', [name.trim()]);
+      res.status(201).json(rows[0]);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.put('/rooms/:id', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const { name, active } = req.body || {};
+      const { rows } = await query(
+        `UPDATE rooms SET name = COALESCE($1, name), active = COALESCE($2, active)
+         WHERE id = $3 RETURNING *`,
+        [name?.trim(), active, req.params.id]
+      );
+      if (!rows[0]) return res.status(404).json({ error: 'Consultório não encontrado' });
+      res.json(rows[0]);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.delete('/rooms/:id', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      await query('DELETE FROM rooms WHERE id = $1', [req.params.id]);
+      res.json({ ok: true });
+    } catch (e) {
+      if (e.code === '23503') {
+        return res.status(400).json({
+          error: 'Este consultório possui senhas no histórico e não pode ser excluído. Desative-o.',
+        });
+      }
+      next(e);
+    }
+  });
+
   // ------- Usuários -------
   router.get('/users', requireAuth, requireAdmin, async (_req, res, next) => {
     try {
       const { rows } = await query(
-        'SELECT id, name, username, role, active, permissions, created_at FROM users ORDER BY id'
+        `SELECT u.id, u.name, u.username, u.role, u.active, u.permissions, u.specialty_id,
+                sp.name AS specialty_name, u.created_at
+         FROM users u LEFT JOIN specialties sp ON sp.id = u.specialty_id ORDER BY u.id`
       );
       res.json(rows.map((u) => ({ ...u, permissions: parsePermissions(u.permissions) })));
     } catch (e) {
@@ -155,7 +262,7 @@ export default function adminRoutes(io) {
 
   router.post('/users', requireAuth, requireAdmin, async (req, res, next) => {
     try {
-      const { name, username, password, role = 'attendant', permissions } = req.body || {};
+      const { name, username, password, role = 'attendant', permissions, specialty_id } = req.body || {};
       if (!name?.trim() || !username?.trim() || !password) {
         return res.status(400).json({ error: 'Preencha nome, usuário e senha' });
       }
@@ -163,14 +270,15 @@ export default function adminRoutes(io) {
       if (pwErr) return res.status(400).json({ error: pwErr });
       const hash = await bcrypt.hash(password, 10);
       const { rows } = await query(
-        `INSERT INTO users (name, username, password_hash, role, permissions)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id, name, username, role, active, permissions`,
+        `INSERT INTO users (name, username, password_hash, role, permissions, specialty_id)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, username, role, active, permissions, specialty_id`,
         [
           name.trim(),
           username.trim().toLowerCase(),
           hash,
           role === 'admin' ? 'admin' : 'attendant',
           permissions !== undefined ? clean(permissions) : '["atendimento","senhas"]',
+          specialty_id || null,
         ]
       );
       res.status(201).json({ ...rows[0], permissions: parsePermissions(rows[0].permissions) });
@@ -182,7 +290,7 @@ export default function adminRoutes(io) {
 
   router.put('/users/:id', requireAuth, requireAdmin, async (req, res, next) => {
     try {
-      const { name, password, role, active, permissions } = req.body || {};
+      const { name, password, role, active, permissions, specialty_id } = req.body || {};
       if (Number(req.params.id) === req.user.id && ((role && role !== 'admin') || active === false)) {
         return res.status(400).json({ error: 'Você não pode rebaixar ou desativar seu próprio usuário' });
       }
@@ -198,9 +306,11 @@ export default function adminRoutes(io) {
            password_hash = COALESCE($2, password_hash),
            role = COALESCE($3, role),
            active = COALESCE($4, active),
-           permissions = COALESCE($5, permissions)
-         WHERE id = $6 RETURNING id, name, username, role, active, permissions`,
-        [name?.trim(), hash, role, active, permissions !== undefined ? clean(permissions) : null, req.params.id]
+           permissions = COALESCE($5, permissions),
+           specialty_id = COALESCE($6, specialty_id)
+         WHERE id = $7 RETURNING id, name, username, role, active, permissions, specialty_id`,
+        [name?.trim(), hash, role, active, permissions !== undefined ? clean(permissions) : null,
+         specialty_id || null, req.params.id]
       );
       if (!rows[0]) return res.status(404).json({ error: 'Usuário não encontrado' });
       res.json({ ...rows[0], permissions: parsePermissions(rows[0].permissions) });
