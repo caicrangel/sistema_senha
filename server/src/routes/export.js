@@ -12,14 +12,23 @@ export const STATUS_PT = {
 };
 
 export const dPt = (d) => (d ? new Date(d).toLocaleDateString('pt-BR') : '');
-export const hPt = (d) =>
-  d ? new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+// Hora completa com segundos (HH:MM:SS)
+export const hPt = (d) => (d ? new Date(d).toLocaleTimeString('pt-BR') : '');
+
+// Duração em segundos formatada: "45s" / "3min 05s" / "1h 02min"
+export const fmtDur = (sec) => {
+  if (sec == null) return '';
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}min ${String(sec % 60).padStart(2, '0')}s`;
+  return `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}min`;
+};
 
 export async function fetchRows(from, to) {
   const { rows } = await query(
     `SELECT t.code, t.customer_name, st.name AS service_name, t.status,
             c.name AS counter_name, u.name AS attendant_name,
             t.created_at, t.called_at, t.finished_at,
+            EXTRACT(EPOCH FROM (t.finished_at - t.called_at))::int AS service_sec,
             ROUND(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)) / 60)::int AS service_min
      FROM tickets t
      JOIN service_types st ON st.id = t.service_type_id
@@ -69,7 +78,7 @@ export async function buildXlsx({ from, to, user }) {
   const header = [
     'Senha', 'Nome', 'Tipo de Atendimento', 'Status', 'Guichê', 'Atendente',
     'Data Emissão', 'Hora Emissão', 'Data Chamada', 'Hora Chamada',
-    'Data Finalização', 'Hora Finalização', 'Duração (min)',
+    'Data Finalização', 'Hora Finalização', 'Duração',
   ];
   const headerRow = ws.addRow(header);
   headerRow.font = { bold: true };
@@ -89,7 +98,7 @@ export async function buildXlsx({ from, to, user }) {
       dPt(r.created_at), hPt(r.created_at),
       dPt(r.called_at), hPt(r.called_at),
       dPt(r.finished_at), hPt(r.finished_at),
-      r.status === 'done' && r.service_min != null ? r.service_min : '',
+      r.status === 'done' ? fmtDur(r.service_sec) : '',
     ]);
   }
 
@@ -104,16 +113,16 @@ export async function buildXlsx({ from, to, user }) {
 
 const PDF_COLS = [
   ['Senha', 42],
-  ['Nome', 100],
-  ['Tipo', 92],
-  ['Status', 74],
-  ['Guichê', 52],
-  ['Atendente', 88],
-  ['Dt. Emissão', 56],
-  ['Hora', 34],
-  ['Dt. Final.', 56],
-  ['Hora', 34],
-  ['Duração', 44],
+  ['Nome', 94],
+  ['Tipo', 86],
+  ['Status', 70],
+  ['Guichê', 50],
+  ['Atendente', 84],
+  ['Dt. Emissão', 54],
+  ['Hora', 46],
+  ['Dt. Final.', 54],
+  ['Hora', 46],
+  ['Duração', 54],
 ];
 
 export async function buildPdf({ from, to, user }) {
@@ -182,7 +191,7 @@ export async function buildPdf({ from, to, user }) {
       r.attendant_name || '—',
       dPt(r.created_at), hPt(r.created_at),
       dPt(r.finished_at) || '—', hPt(r.finished_at) || '—',
-      r.status === 'done' && r.service_min != null ? `${r.service_min} min` : '—',
+      r.status === 'done' ? fmtDur(r.service_sec) || '—' : '—',
     ];
     let x = left;
     cells.forEach((val, i) => {

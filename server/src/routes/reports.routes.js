@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth, requirePerm } from '../auth.js';
-import { buildPdf, buildXlsx, fetchRows, STATUS_PT, dPt, hPt } from './export.js';
+import { buildPdf, buildXlsx, fetchRows, STATUS_PT, dPt, hPt, fmtDur } from './export.js';
 
 const router = Router();
 
@@ -93,14 +93,14 @@ router.get('/tickets', async (req, res, next) => {
     const rows = await fetchRows(from, to);
     if (req.query.format === 'csv') {
       const header =
-        'Senha;Nome;Tipo;Status;Guichê;Atendente;Data Emissão;Hora Emissão;Data Chamada;Hora Chamada;Data Finalização;Hora Finalização;Duração (min)';
+        'Senha;Nome;Tipo;Status;Guichê;Atendente;Data Emissão;Hora Emissão;Data Chamada;Hora Chamada;Data Finalização;Hora Finalização;Duração';
       const lines = rows.map((r) =>
         [r.code, r.customer_name || '', r.service_name, STATUS_PT[r.status] || r.status,
          r.counter_name || '', r.attendant_name || '',
          dPt(r.created_at), hPt(r.created_at),
          dPt(r.called_at), hPt(r.called_at),
          dPt(r.finished_at), hPt(r.finished_at),
-         r.status === 'done' && r.service_min != null ? r.service_min : '']
+         r.status === 'done' ? fmtDur(r.service_sec) : '']
           .map((v) => String(v).replaceAll(';', ','))
           .join(';')
       );

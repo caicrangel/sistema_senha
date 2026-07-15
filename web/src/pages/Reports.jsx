@@ -8,7 +8,15 @@ const localDate = (d) => d.toLocaleDateString('en-CA');
 const today = () => localDate(new Date());
 const daysAgo = (n) => localDate(new Date(Date.now() - n * 86400000));
 
-const fmt = (d) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const fmt = (d) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }) : '—');
+
+// Duração com segundos: "45s" / "3min 05s" / "1h 02min"
+const fmtDurSec = (sec) => {
+  if (sec == null) return '—';
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}min ${String(sec % 60).padStart(2, '0')}s`;
+  return `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}min`;
+};
 
 // Formata minutos como "2h 15min" / "45 min"
 const fmtMin = (m) =>
@@ -195,7 +203,7 @@ export default function Reports() {
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmt(r.created_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmt(r.finished_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
-                  {r.status === 'done' ? fmtMin(r.service_min) : '—'}
+                  {r.status === 'done' ? fmtDurSec(r.service_sec) : '—'}
                 </td>
               </tr>
             ))}

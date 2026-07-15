@@ -257,7 +257,8 @@ export default function ticketRoutes(io) {
   router.get('/today', requireAuth, async (_req, res, next) => {
     try {
       const { rows } = await query(
-        `SELECT t.*, st.name AS service_name, st.color, c.name AS counter_name, u.name AS attendant_name
+        `SELECT t.*, st.name AS service_name, st.color, c.name AS counter_name, u.name AS attendant_name,
+                EXTRACT(EPOCH FROM (t.finished_at - t.called_at))::int AS service_sec
          FROM tickets t
          JOIN service_types st ON st.id = t.service_type_id
          LEFT JOIN counters c ON c.id = t.counter_id
@@ -273,6 +274,27 @@ export default function ticketRoutes(io) {
 
   // Cancelar senha em espera (gestão)
   router.post('/:id/cancel', requireAuth, transition(['waiting'], 'cancelled', 'finished_at'));
+
+  // Devolver à fila: chamada por engano volta a aguardar mantendo a data de
+  // chegada original — pela regra da fila (prioridade > chegada) ela retorna
+  // para a posição em que estava, não para o fim
+  router.post('/:id/return', requireAuth, async (req, res, next) => {
+    try {
+      const { rows } = await query(
+        `UPDATE tickets SET
+           status = 'waiting', counter_id = NULL, attendant_id = NULL,
+           called_at = NULL, started_at = NULL, return_count = return_count + 1
+         WHERE id = $1 AND status IN ('called', 'in_service')
+         RETURNING *`,
+        [req.params.id]
+      );
+      if (!rows[0]) return res.status(404).json({ error: 'Esta senha não está em chamada/atendimento' });
+      await broadcastQueue();
+      res.json(rows[0]);
+    } catch (e) {
+      next(e);
+    }
+  });
 
   return router;
 }

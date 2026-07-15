@@ -2,13 +2,43 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { getSocket } from '../lib/socket.js';
 import { Card, PageTitle, Button, StatusBadge } from '../components/ui.jsx';
+import { fmtDur, elapsedSec } from '../lib/time.js';
 
-const fmtTime = (d) =>
-  d ? new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString('pt-BR') : '—');
+
+// Duração da senha: concluída = fixa; em chamada/atendimento = cronômetro ao vivo;
+// aguardando = tempo de espera correndo
+function Duration({ ticket: t, now }) {
+  if (t.status === 'done') {
+    return <span>{fmtDur(t.service_sec)}</span>;
+  }
+  if (t.status === 'called' || t.status === 'in_service') {
+    return (
+      <span className="font-semibold text-blue-600 dark:text-blue-400">
+        ⏱ {fmtDur(elapsedSec(t.called_at, now))}
+      </span>
+    );
+  }
+  if (t.status === 'waiting') {
+    return (
+      <span className="text-amber-600 dark:text-amber-400">
+        espera {fmtDur(elapsedSec(t.created_at, now))}
+      </span>
+    );
+  }
+  return <span>—</span>;
+}
 
 export default function Tickets() {
   const [tickets, setTickets] = useState([]);
   const [filter, setFilter] = useState('all');
+  const [now, setNow] = useState(Date.now());
+
+  // Relógio de 1s para os cronômetros ao vivo
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const load = useCallback(() => api('/tickets/today').then(setTickets).catch(() => {}), []);
 
@@ -74,6 +104,7 @@ export default function Tickets() {
               <th className="px-5 py-3">Atendente</th>
               <th className="px-5 py-3">Emitida</th>
               <th className="px-5 py-3">Chamada</th>
+              <th className="px-5 py-3">Duração</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
@@ -92,6 +123,9 @@ export default function Tickets() {
                 <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{t.attendant_name || '—'}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmtTime(t.created_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmtTime(t.called_at)}</td>
+                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
+                  <Duration ticket={t} now={now} />
+                </td>
                 <td className="px-5 py-3 text-right">
                   {t.status === 'waiting' && (
                     <Button variant="danger" className="px-3 py-1 text-xs" onClick={() => cancel(t.id)}>
@@ -103,7 +137,7 @@ export default function Tickets() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">
+                <td colSpan={10} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">
                   Nenhuma senha encontrada
                 </td>
               </tr>

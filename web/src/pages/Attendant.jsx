@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { getSocket } from '../lib/socket.js';
 import { Card, PageTitle, Button, Select, StatusBadge } from '../components/ui.jsx';
+import { fmtClock, fmtDur, elapsedSec } from '../lib/time.js';
 
 export default function Attendant() {
   const [queue, setQueue] = useState([]);
@@ -10,6 +11,13 @@ export default function Attendant() {
   const [current, setCurrent] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+  // Relógio de 1s para o cronômetro do atendimento e tempos da fila
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const load = useCallback(() => {
     api('/tickets/queue').then(setQueue).catch(() => {});
@@ -55,6 +63,15 @@ export default function Attendant() {
       setCurrent(t);
     });
 
+  // Devolver à fila: a senha mantém a data de chegada, então volta para a
+  // posição original (não vai para o fim da fila)
+  const returnToQueue = () =>
+    act(async () => {
+      if (!confirm(`Devolver a senha ${current.code} para a fila? Ela retorna à posição original de chegada.`)) return;
+      await api(`/tickets/${current.id}/return`, { method: 'POST' });
+      setCurrent(null);
+    });
+
   const selectCounter = (v) => {
     setCounterId(v);
     localStorage.setItem('senha_counter', v);
@@ -95,6 +112,28 @@ export default function Attendant() {
               <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">{current.service_name}</div>
               <div className="mt-2"><StatusBadge status={current.status} /></div>
 
+              {/* Cronômetro ao vivo: chamada e, após Iniciar, tempo de atendimento */}
+              <div className="mt-3 rounded-xl bg-slate-50 py-2.5 dark:bg-slate-800">
+                {current.status === 'in_service' ? (
+                  <>
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Tempo de atendimento</div>
+                    <div className="text-3xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                      ⏱ {fmtClock(elapsedSec(current.started_at, now))}
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-400">
+                      chamada há {fmtClock(elapsedSec(current.called_at, now))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Chamada há</div>
+                    <div className="text-3xl font-black tabular-nums text-blue-600 dark:text-blue-400">
+                      ⏱ {fmtClock(elapsedSec(current.called_at, now))}
+                    </div>
+                  </>
+                )}
+              </div>
+
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <Button variant="secondary" disabled={busy}
                   onClick={() => act(() => api(`/tickets/${current.id}/recall`, { method: 'POST' }))}>
@@ -108,14 +147,18 @@ export default function Attendant() {
                 )}
                 <Button variant="success" disabled={busy}
                   onClick={() => act(async () => { await api(`/tickets/${current.id}/finish`, { method: 'POST' }); setCurrent(null); })}>
-                  ✅ Finalizar
+                  ✔ Finalizar
                 </Button>
                 {current.status === 'called' && (
                   <Button variant="danger" disabled={busy}
                     onClick={() => act(async () => { await api(`/tickets/${current.id}/no-show`, { method: 'POST' }); setCurrent(null); })}>
-                    🚫 Não veio
+                    ✕ Não veio
                   </Button>
                 )}
+                <Button variant="secondary" disabled={busy} className="col-span-2"
+                  onClick={returnToQueue}>
+                  ↩️ Devolver à fila
+                </Button>
               </div>
             </div>
           )}
@@ -146,11 +189,19 @@ export default function Attendant() {
                 <div className="flex-1">
                   <div className="text-sm font-medium text-slate-900 dark:text-white">
                     {t.customer_name || <span className="text-slate-400">Sem nome</span>}
+                    {t.return_count > 0 && (
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
+                        ↩ devolvida
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400">{t.service_name}</div>
                 </div>
-                <span className="text-sm tabular-nums text-slate-500 dark:text-slate-400">
+                <span className="text-right text-sm tabular-nums text-slate-500 dark:text-slate-400">
                   {new Date(t.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  <span className="block text-xs text-amber-600 dark:text-amber-400">
+                    espera {fmtDur(elapsedSec(t.created_at, now))}
+                  </span>
                 </span>
                 <Button
                   variant="secondary"
