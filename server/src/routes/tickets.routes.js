@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { pool, query } from '../db.js';
-import { requireAuth, requirePerm } from '../auth.js';
+import { requireAuth, requirePerm, parsePermissions } from '../auth.js';
 import { summary as presenceSummary, isSpecialtyOnline } from '../presence.js';
 
 // SELECT padrão com todos os nomes e o destino da chamada (guichê ou consultório)
@@ -300,6 +300,23 @@ export default function ticketRoutes(io) {
   // Médicos online (para a recepção saber se há quem atenda a especialidade)
   router.get('/online-doctors', requireAuth, (_req, res) => {
     res.json(presenceSummary());
+  });
+
+  // Lista de médicos (usuários com permissão de médico) com sua especialidade
+  router.get('/doctors', requireAuth, async (_req, res, next) => {
+    try {
+      const { rows } = await query(
+        `SELECT u.id, u.name, u.specialty_id, sp.name AS specialty_name, u.permissions
+         FROM users u LEFT JOIN specialties sp ON sp.id = u.specialty_id
+         WHERE u.active = TRUE ORDER BY sp.name NULLS FIRST, u.name`
+      );
+      const doctors = rows
+        .filter((u) => parsePermissions(u.permissions).includes('medico'))
+        .map(({ permissions, ...d }) => d);
+      res.json(doctors);
+    } catch (e) {
+      next(e);
+    }
   });
 
   // Encaminhar para o médico: recepção → fila do médico (mantém histórico da recepção)

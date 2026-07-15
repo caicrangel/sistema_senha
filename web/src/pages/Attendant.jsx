@@ -12,7 +12,8 @@ export default function Attendant() {
   const [counters, setCounters] = useState([]);
   const [specialties, setSpecialties] = useState([]);
   const [specialtyId, setSpecialtyId] = useState('');
-  const [online, setOnline] = useState({ total: 0, generalists: 0, availability: {} });
+  const [doctors, setDoctors] = useState([]);
+  const [online, setOnline] = useState({ total: 0, generalists: 0, availability: {}, onlineIds: [] });
   const [counterId, setCounterId] = useState(() => localStorage.getItem('senha_counter') || '');
   const [current, setCurrent] = useState(null);
   const [error, setError] = useState('');
@@ -30,10 +31,11 @@ export default function Attendant() {
     api('/tickets/mine').then(setCurrent).catch(() => {});
   }, []);
 
-  // Carrega especialidades e a presença de médicos quando o fluxo médico está ativo
+  // Carrega especialidades, lista de médicos e a presença quando o fluxo médico está ativo
   useEffect(() => {
     if (!medicalOn) return;
     api('/admin/specialties').then(setSpecialties).catch(() => {});
+    api('/tickets/doctors').then(setDoctors).catch(() => {});
     api('/tickets/online-doctors').then(setOnline).catch(() => {});
   }, [medicalOn]);
 
@@ -131,7 +133,8 @@ export default function Attendant() {
       <PageTitle title="Atendimento" subtitle="Chame e gerencie as senhas do seu guichê" />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
+        <div className="flex flex-col gap-6 lg:col-span-1">
+        <Card>
           <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Meu guichê</h2>
           <Select value={counterId} onChange={(e) => selectCounter(e.target.value)}>
             <option value="">Selecione o guichê…</option>
@@ -251,6 +254,10 @@ export default function Attendant() {
           )}
         </Card>
 
+        {/* Médicos — status online/offline por especialidade e profissional */}
+        {medicalOn && <DoctorsPresence doctors={doctors} online={online} />}
+        </div>
+
         <Card className="lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -308,5 +315,70 @@ export default function Attendant() {
         </Card>
       </div>
     </div>
+  );
+}
+
+// Card de presença dos médicos: online/offline por especialidade e por profissional
+function DoctorsPresence({ doctors, online }) {
+  const onlineIds = new Set(online.onlineIds || []);
+
+  // Agrupa os médicos por especialidade; generalistas (sem especialidade) por último
+  const groupsMap = new Map();
+  const keyFor = (d) => d.specialty_name || 'Sem especialidade (atende todas)';
+  for (const d of doctors) {
+    const k = keyFor(d);
+    if (!groupsMap.has(k)) groupsMap.set(k, []);
+    groupsMap.get(k).push(d);
+  }
+  const groups = [...groupsMap.entries()]
+    .map(([name, docs]) => ({ name, docs }))
+    .sort((a, b) =>
+      a.name.startsWith('Sem especialidade') ? 1 : b.name.startsWith('Sem especialidade') ? -1 : a.name.localeCompare(b.name)
+    );
+
+  const totalOnline = doctors.filter((d) => onlineIds.has(d.id)).length;
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-semibold text-slate-900 dark:text-white">Médicos</h2>
+        <span className={`rounded-full px-3 py-1 text-xs font-bold ${totalOnline > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+          {totalOnline} online
+        </span>
+      </div>
+      {doctors.length === 0 ? (
+        <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum médico cadastrado</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {groups.map((g) => {
+            const anyOnline = g.docs.some((d) => onlineIds.has(d.id));
+            return (
+              <div key={g.name}>
+                <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <span className={`h-2 w-2 rounded-full ${anyOnline ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                  {g.name}
+                </div>
+                <div className="flex flex-col gap-1 pl-4">
+                  {g.docs.map((d) => {
+                    const on = onlineIds.has(d.id);
+                    return (
+                      <div key={d.id} className="flex items-center gap-2 text-sm">
+                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${on ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                        <span className={on ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'}>
+                          {d.name}
+                        </span>
+                        <span className={`ml-auto text-xs font-medium ${on ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                          {on ? 'online' : 'offline'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }

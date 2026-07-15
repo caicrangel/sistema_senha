@@ -29,7 +29,12 @@ export function summary() {
   for (const [spec, n] of Object.entries(bySpecialty)) {
     availability[spec] = n + generalists;
   }
-  return { total: uniques.size, generalists, availability };
+  return {
+    total: uniques.size,
+    generalists,
+    availability,
+    onlineIds: [...uniques.keys()], // ids dos médicos online (para status por profissional)
+  };
 }
 
 // Há médico apto a atender a especialidade? (específico dela ou generalista)
