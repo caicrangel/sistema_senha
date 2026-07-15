@@ -29,6 +29,15 @@ export function signToken(user) {
   );
 }
 
+// Verifica um token e devolve o payload (ou null). Usado na presença via socket.
+export function verifyToken(token) {
+  try {
+    return jwt.verify(token, SECRET);
+  } catch {
+    return null;
+  }
+}
+
 export function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;

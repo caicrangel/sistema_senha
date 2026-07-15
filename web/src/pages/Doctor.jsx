@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, getUser } from '../lib/api.js';
+import { api, getUser, getToken } from '../lib/api.js';
 import { getSocket } from '../lib/socket.js';
 import { Card, PageTitle, Button, Select, StatusBadge } from '../components/ui.jsx';
 import { fmtClock, fmtDur, elapsedSec } from '../lib/time.js';
@@ -28,9 +28,15 @@ export default function Doctor() {
     load();
     api('/tickets/med-rooms').then(setRooms).catch(() => {});
     const s = getSocket();
+    // Anuncia presença: enquanto esta tela estiver aberta, o médico está "online"
+    const announce = () => s.emit('presence:doctor', { token: getToken() });
+    announce();
+    s.on('connect', announce);
     s.on('queue:update', load);
     s.on('ticket:forwarded', load);
     return () => {
+      s.emit('presence:leave');
+      s.off('connect', announce);
       s.off('queue:update', load);
       s.off('ticket:forwarded', load);
     };

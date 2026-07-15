@@ -71,6 +71,11 @@ export async function api(path, { method = 'GET', body, auth = true } = {}) {
     throw new Error('Sessão expirada');
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Erro na requisição');
+  if (!res.ok) {
+    const err = new Error(data.error || 'Erro na requisição');
+    Object.assign(err, data); // repassa campos extras (ex.: no_doctor)
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }

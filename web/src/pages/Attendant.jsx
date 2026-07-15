@@ -12,6 +12,7 @@ export default function Attendant() {
   const [counters, setCounters] = useState([]);
   const [specialties, setSpecialties] = useState([]);
   const [specialtyId, setSpecialtyId] = useState('');
+  const [online, setOnline] = useState({ total: 0, generalists: 0, availability: {} });
   const [counterId, setCounterId] = useState(() => localStorage.getItem('senha_counter') || '');
   const [current, setCurrent] = useState(null);
   const [error, setError] = useState('');
@@ -29,9 +30,11 @@ export default function Attendant() {
     api('/tickets/mine').then(setCurrent).catch(() => {});
   }, []);
 
-  // Carrega especialidades quando o fluxo médico está (ou passa a estar) ativo
+  // Carrega especialidades e a presença de médicos quando o fluxo médico está ativo
   useEffect(() => {
-    if (medicalOn) api('/admin/specialties').then(setSpecialties).catch(() => {});
+    if (!medicalOn) return;
+    api('/admin/specialties').then(setSpecialties).catch(() => {});
+    api('/tickets/online-doctors').then(setOnline).catch(() => {});
   }, [medicalOn]);
 
   useEffect(() => {
@@ -40,11 +43,17 @@ export default function Attendant() {
     const s = getSocket();
     s.on('queue:update', load);
     s.on('ticket:created', load);
+    s.on('doctors:online', setOnline);
     return () => {
       s.off('queue:update', load);
       s.off('ticket:created', load);
+      s.off('doctors:online', setOnline);
     };
   }, [load]);
+
+  // Há médico apto para a especialidade escolhida? (específico ou generalista)
+  const specialtyOnline = (id) =>
+    online.generalists > 0 || (online.availability?.[id] || 0) > 0;
 
   const act = async (fn) => {
     setBusy(true);
@@ -73,11 +82,32 @@ export default function Attendant() {
       setCurrent(t);
     });
 
-  // Encaminhar para o médico: triagem concluída, senha entra na fila do médico
+  // Encaminhar para o médico: triagem concluída, senha entra na fila do médico.
+  // Se não houver médico online para a especialidade, o servidor bloqueia (409)
+  // e pedimos confirmação para encaminhar mesmo assim (evita senha presa sem aviso).
   const forward = () =>
     act(async () => {
       if (!specialtyId) throw new Error('Selecione a especialidade para encaminhar');
-      await api(`/tickets/${current.id}/forward`, { method: 'POST', body: { specialty_id: Number(specialtyId) } });
+      const spName = specialties.find((s) => String(s.id) === String(specialtyId))?.name || 'a especialidade';
+      const body = { specialty_id: Number(specialtyId) };
+      try {
+        await api(`/tickets/${current.id}/forward`, { method: 'POST', body });
+      } catch (e) {
+        if (e.no_doctor || /nenhum médico/i.test(e.message)) {
+          if (!confirm(`⚠️ Nenhum médico de ${spName} está online agora. A senha ficará aguardando na fila do consultório até alguém entrar.\n\nEncaminhar mesmo assim?`)) return;
+          await api(`/tickets/${current.id}/forward`, { method: 'POST', body: { ...body, force: true } });
+        } else {
+          throw e;
+        }
+      }
+      setCurrent(null);
+      setSpecialtyId('');
+    });
+
+  // Finalizar no guichê: encerra o atendimento sem passar pelo médico
+  const finishAtCounter = () =>
+    act(async () => {
+      await api(`/tickets/${current.id}/finish`, { method: 'POST' });
       setCurrent(null);
       setSpecialtyId('');
     });
@@ -153,48 +183,67 @@ export default function Attendant() {
                 )}
               </div>
 
-              {/* Fluxo médico: escolher especialidade antes de encaminhar */}
-              {medicalOn && (
-                <div className="mt-3">
-                  <Select value={specialtyId} onChange={(e) => setSpecialtyId(e.target.value)}>
-                    <option value="">Encaminhar para… (especialidade)</option>
-                    {specialties.map((sp) => (
-                      <option key={sp.id} value={sp.id}>{sp.name}</option>
-                    ))}
-                  </Select>
-                </div>
-              )}
-
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              {/* Ações de chamada: rechamar e iniciar o atendimento */}
+              <div className="mt-4 grid grid-cols-2 gap-2">
                 <Button variant="secondary" disabled={busy}
                   onClick={() => act(() => api(`/tickets/${current.id}/recall`, { method: 'POST' }))}>
                   🔁 Rechamar
                 </Button>
-                {current.status === 'called' && (
+                {current.status === 'called' ? (
                   <Button variant="secondary" disabled={busy}
                     onClick={() => act(async () => setCurrent(await api(`/tickets/${current.id}/start`, { method: 'POST' })))}>
                     ▶️ Iniciar
                   </Button>
-                )}
-                {medicalOn ? (
-                  <Button variant="success" disabled={busy || !specialtyId} className="col-span-2"
+                ) : <div />}
+              </div>
+
+              {/* Encerramento: encaminhar ao médico e/ou finalizar no guichê */}
+              {medicalOn ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Encerrar atendimento
+                  </div>
+                  <Select value={specialtyId} onChange={(e) => setSpecialtyId(e.target.value)}>
+                    <option value="">Encaminhar para… (especialidade)</option>
+                    {specialties.map((sp) => {
+                      const on = specialtyOnline(sp.id);
+                      return (
+                        <option key={sp.id} value={sp.id}>
+                          {sp.name} {on ? '🟢 online' : '🔴 offline'}
+                        </option>
+                      );
+                    })}
+                  </Select>
+                  {specialtyId && !specialtyOnline(Number(specialtyId)) && (
+                    <p className="mt-1.5 text-xs font-medium text-red-600 dark:text-red-400">
+                      ⚠️ Nenhum médico desta especialidade está online agora.
+                    </p>
+                  )}
+                  <Button variant="success" disabled={busy || !specialtyId} className="mt-2 w-full"
                     onClick={forward}>
                     🩺 Encaminhar para o médico
                   </Button>
-                ) : (
-                  <Button variant="success" disabled={busy}
-                    onClick={() => act(async () => { await api(`/tickets/${current.id}/finish`, { method: 'POST' }); setCurrent(null); })}>
-                    ✔ Finalizar
+                  <Button variant="secondary" disabled={busy} className="mt-2 w-full"
+                    onClick={finishAtCounter}>
+                    ✔ Finalizar no guichê (sem médico)
                   </Button>
-                )}
-                {current.status === 'called' && (
+                </div>
+              ) : (
+                <Button variant="success" disabled={busy} className="mt-4 w-full"
+                  onClick={finishAtCounter}>
+                  ✔ Finalizar
+                </Button>
+              )}
+
+              {/* Ações secundárias */}
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {current.status === 'called' ? (
                   <Button variant="danger" disabled={busy}
                     onClick={() => act(async () => { await api(`/tickets/${current.id}/no-show`, { method: 'POST' }); setCurrent(null); })}>
                     ✕ Não veio
                   </Button>
-                )}
-                <Button variant="secondary" disabled={busy} className="col-span-2"
-                  onClick={returnToQueue}>
+                ) : <div />}
+                <Button variant="secondary" disabled={busy} onClick={returnToQueue}>
                   ↩️ Devolver à fila
                 </Button>
               </div>

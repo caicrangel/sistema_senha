@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool, query } from '../db.js';
 import { requireAuth, requirePerm } from '../auth.js';
+import { summary as presenceSummary, isSpecialtyOnline } from '../presence.js';
 
 // SELECT padrão com todos os nomes e o destino da chamada (guichê ou consultório)
 const TICKET_SELECT = `
@@ -296,19 +297,32 @@ export default function ticketRoutes(io) {
     }
   });
 
+  // Médicos online (para a recepção saber se há quem atenda a especialidade)
+  router.get('/online-doctors', requireAuth, (_req, res) => {
+    res.json(presenceSummary());
+  });
+
   // Encaminhar para o médico: recepção → fila do médico (mantém histórico da recepção)
   router.post('/:id/forward', requireAuth, async (req, res, next) => {
     try {
       if (!(await flowMedicalOn())) {
         return res.status(400).json({ error: 'O fluxo médico não está habilitado' });
       }
-      const { specialty_id } = req.body || {};
+      const { specialty_id, force } = req.body || {};
       if (!specialty_id) return res.status(400).json({ error: 'Selecione a especialidade' });
       const { rows: sp } = await query(
-        'SELECT id FROM specialties WHERE id = $1 AND active = TRUE',
+        'SELECT id, name FROM specialties WHERE id = $1 AND active = TRUE',
         [specialty_id]
       );
       if (!sp[0]) return res.status(400).json({ error: 'Especialidade inválida' });
+
+      // Bloqueia por padrão quando não há médico online — evita senha presa
+      if (!force && !isSpecialtyOnline(Number(specialty_id))) {
+        return res.status(409).json({
+          error: `Nenhum médico de ${sp[0].name} está online no momento`,
+          no_doctor: true,
+        });
+      }
 
       const { rows } = await query(
         `UPDATE tickets SET stage = 'medical', status = 'waiting',
