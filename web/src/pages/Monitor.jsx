@@ -95,8 +95,7 @@ export default function Monitor() {
             {soundOn ? '🔊' : '🔇'}
           </button>
           <span className={`text-3xl font-semibold tabular-nums ${subtle}`}>
-            {clock.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-            <span className="text-xl opacity-70">:{String(clock.getSeconds()).padStart(2, '0')}</span>
+            {clock.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
       </header>
