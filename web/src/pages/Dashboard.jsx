@@ -3,9 +3,7 @@ import { api } from '../lib/api.js';
 import { getSocket } from '../lib/socket.js';
 import { Card, PageTitle } from '../components/ui.jsx';
 import { StatTile, BarChart, HBarChart } from '../components/charts.jsx';
-
-const fmtMin = (m) =>
-  m == null ? null : m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}min` : `${m} min`;
+import { fmtDur } from '../lib/time.js';
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
@@ -45,13 +43,13 @@ export default function Dashboard() {
         <StatTile label="Não compareceram" value={t.no_show} accent="#898781" />
         <StatTile
           label="Espera média"
-          value={t.avg_wait_min != null ? `${t.avg_wait_min} min` : '—'}
+          value={t.avg_wait_sec != null ? fmtDur(t.avg_wait_sec) : '—'}
           hint="Da emissão até a chamada"
           accent="#2a78d6"
         />
         <StatTile
           label="Atendimento médio"
-          value={t.avg_service_min != null ? `${t.avg_service_min} min` : '—'}
+          value={t.avg_service_sec != null ? fmtDur(t.avg_service_sec) : '—'}
           hint="Da chamada até a finalização"
           accent="#1baf7a"
         />
@@ -76,7 +74,7 @@ export default function Dashboard() {
           <h2 className="mb-6 font-semibold text-slate-900 dark:text-white">Atendimentos por atendente</h2>
           <HBarChart
             data={(data?.byAttendant || []).map((x) => ({
-              label: `${x.name}${x.total_service_min != null ? ` · total ${fmtMin(x.total_service_min)}` : ''}${x.avg_service_min != null ? ` · média ${x.avg_service_min} min` : ''}`,
+              label: `${x.name}${x.total_service_sec != null ? ` · total ${fmtDur(x.total_service_sec)}` : ''}${x.avg_service_sec != null ? ` · média ${fmtDur(x.avg_service_sec)}` : ''}`,
               value: x.total,
             }))}
           />

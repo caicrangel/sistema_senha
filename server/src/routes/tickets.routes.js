@@ -258,7 +258,9 @@ export default function ticketRoutes(io) {
     try {
       const { rows } = await query(
         `SELECT t.*, st.name AS service_name, st.color, c.name AS counter_name, u.name AS attendant_name,
-                EXTRACT(EPOCH FROM (t.finished_at - t.called_at))::int AS service_sec
+                EXTRACT(EPOCH FROM (t.called_at - t.created_at))::int AS wait_sec,
+                EXTRACT(EPOCH FROM (t.finished_at - t.called_at))::int AS service_sec,
+                EXTRACT(EPOCH FROM (t.finished_at - t.created_at))::int AS total_sec
          FROM tickets t
          JOIN service_types st ON st.id = t.service_type_id
          LEFT JOIN counters c ON c.id = t.counter_id

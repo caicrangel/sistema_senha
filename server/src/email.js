@@ -37,8 +37,13 @@ export async function sendMail({ to, subject, html, attachments }) {
 
 // ---------------------------------------------------------------- Dados do relatório
 
-const fmtMin = (m) =>
-  m == null ? '—' : m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}min` : `${m} min`;
+// Duração legível a partir de segundos: "45s" / "3min 05s" / "1h 02min"
+const fmtDur = (sec) => {
+  if (sec == null) return '—';
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}min ${String(sec % 60).padStart(2, '0')}s`;
+  return `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}min`;
+};
 
 async function summaryData(from, to) {
   const params = [from, to];
@@ -48,12 +53,14 @@ async function summaryData(from, to) {
             COUNT(*) FILTER (WHERE status = 'done')::int AS done,
             COUNT(*) FILTER (WHERE status = 'no_show')::int AS no_show,
             COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
-            ROUND(AVG(EXTRACT(EPOCH FROM (called_at - created_at)) / 60)
-              FILTER (WHERE called_at IS NOT NULL))::int AS avg_wait_min,
-            ROUND(AVG(EXTRACT(EPOCH FROM (finished_at - called_at)) / 60)
-              FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS avg_service_min,
-            ROUND(SUM(EXTRACT(EPOCH FROM (finished_at - called_at)) / 60)
-              FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS total_service_min
+            ROUND(AVG(EXTRACT(EPOCH FROM (called_at - created_at)))
+              FILTER (WHERE called_at IS NOT NULL))::int AS avg_wait_sec,
+            ROUND(AVG(EXTRACT(EPOCH FROM (finished_at - called_at)))
+              FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS avg_service_sec,
+            ROUND(AVG(EXTRACT(EPOCH FROM (finished_at - created_at)))
+              FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS avg_total_sec,
+            ROUND(SUM(EXTRACT(EPOCH FROM (finished_at - called_at)))
+              FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS total_service_sec
      FROM tickets t WHERE ${where}`,
     params
   );
@@ -67,10 +74,10 @@ async function summaryData(from, to) {
   const { rows: byAttendant } = await query(
     `SELECT u.name, COUNT(t.id)::int AS total,
             COUNT(t.id) FILTER (WHERE t.status = 'done')::int AS done,
-            ROUND(AVG(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)) / 60)
-              FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS avg_service_min,
-            ROUND(SUM(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)) / 60)
-              FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS total_service_min
+            ROUND(AVG(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)))
+              FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS avg_service_sec,
+            ROUND(SUM(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)))
+              FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS total_service_sec
      FROM users u
      JOIN tickets t ON t.attendant_id = u.id AND ${where}
      GROUP BY u.id, u.name ORDER BY total DESC`,
@@ -118,9 +125,10 @@ export async function buildScheduleEmail(schedule, now = new Date()) {
     atendidas: t.done ?? 0,
     nao_compareceu: t.no_show ?? 0,
     canceladas: t.cancelled ?? 0,
-    espera_media: fmtMin(t.avg_wait_min),
-    atendimento_medio: fmtMin(t.avg_service_min),
-    tempo_total: fmtMin(t.total_service_min),
+    espera_media: fmtDur(t.avg_wait_sec),
+    atendimento_medio: fmtDur(t.avg_service_sec),
+    operacao_media: fmtDur(t.avg_total_sec),
+    tempo_total: fmtDur(t.total_service_sec),
   };
   const fill = (text) =>
     String(text || '').replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
@@ -141,8 +149,9 @@ export async function buildScheduleEmail(schedule, now = new Date()) {
       ['Atendidas', vars.atendidas],
       ['Não compareceram', vars.nao_compareceu],
       ['Canceladas', vars.canceladas],
-      ['Espera média', vars.espera_media],
-      ['Atendimento médio', vars.atendimento_medio],
+      ['Espera média (emissão → chamada)', vars.espera_media],
+      ['Atendimento médio (chamada → fim)', vars.atendimento_medio],
+      ['Operação média (emissão → fim)', vars.operacao_media],
       ['Tempo total de atendimento', vars.tempo_total],
     ];
     for (const [k, v] of rows) {
@@ -166,7 +175,7 @@ export async function buildScheduleEmail(schedule, now = new Date()) {
     }
     html += `</tr>`;
     for (const a of data.byAttendant) {
-      html += `<tr><td style="${TD}">${a.name}</td><td style="${TD}">${a.total}</td><td style="${TD}">${a.done}</td><td style="${TD}">${fmtMin(a.total_service_min)}</td><td style="${TD}">${fmtMin(a.avg_service_min)}</td></tr>`;
+      html += `<tr><td style="${TD}">${a.name}</td><td style="${TD}">${a.total}</td><td style="${TD}">${a.done}</td><td style="${TD}">${fmtDur(a.total_service_sec)}</td><td style="${TD}">${fmtDur(a.avg_service_sec)}</td></tr>`;
     }
     if (!data.byAttendant.length) {
       html += `<tr><td style="${TD}" colspan="5">Sem atendimentos no período</td></tr>`;

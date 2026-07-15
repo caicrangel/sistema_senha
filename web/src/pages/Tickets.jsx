@@ -6,27 +6,37 @@ import { fmtDur, elapsedSec } from '../lib/time.js';
 
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString('pt-BR') : '—');
 
-// Duração da senha: concluída = fixa; em chamada/atendimento = cronômetro ao vivo;
-// aguardando = tempo de espera correndo
-function Duration({ ticket: t, now }) {
-  if (t.status === 'done') {
-    return <span>{fmtDur(t.service_sec)}</span>;
-  }
-  if (t.status === 'called' || t.status === 'in_service') {
-    return (
-      <span className="font-semibold text-blue-600 dark:text-blue-400">
-        ⏱ {fmtDur(elapsedSec(t.called_at, now))}
-      </span>
-    );
-  }
+// Tempo de espera (emissão → chamada). Ainda aguardando = cronômetro correndo.
+function WaitCell({ ticket: t, now }) {
+  if (t.wait_sec != null) return <span>{fmtDur(t.wait_sec)}</span>;
   if (t.status === 'waiting') {
     return (
-      <span className="text-amber-600 dark:text-amber-400">
-        espera {fmtDur(elapsedSec(t.created_at, now))}
-      </span>
+      <span className="text-amber-600 dark:text-amber-400">⏱ {fmtDur(elapsedSec(t.created_at, now))}</span>
     );
   }
   return <span>—</span>;
+}
+
+// Tempo de atendimento (chamada → finalização). Em andamento = cronômetro correndo.
+function ServiceCell({ ticket: t, now }) {
+  if (t.status === 'done') return <span>{fmtDur(t.service_sec)}</span>;
+  if (t.status === 'called' || t.status === 'in_service') {
+    return (
+      <span className="font-semibold text-blue-600 dark:text-blue-400">⏱ {fmtDur(elapsedSec(t.called_at, now))}</span>
+    );
+  }
+  return <span>—</span>;
+}
+
+// Tempo total da operação (emissão → finalização). Antes de finalizar = correndo.
+function TotalCell({ ticket: t, now }) {
+  if (t.status === 'done') {
+    return <span className="font-semibold text-slate-900 dark:text-white">{fmtDur(t.total_sec)}</span>;
+  }
+  if (['cancelled', 'no_show'].includes(t.status)) return <span>—</span>;
+  return (
+    <span className="text-slate-500 dark:text-slate-400">⏱ {fmtDur(elapsedSec(t.created_at, now))}</span>
+  );
 }
 
 export default function Tickets() {
@@ -104,7 +114,9 @@ export default function Tickets() {
               <th className="px-5 py-3">Atendente</th>
               <th className="px-5 py-3">Emitida</th>
               <th className="px-5 py-3">Chamada</th>
-              <th className="px-5 py-3">Duração</th>
+              <th className="px-5 py-3">Espera</th>
+              <th className="px-5 py-3">Atendimento</th>
+              <th className="px-5 py-3">Total</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
@@ -124,7 +136,13 @@ export default function Tickets() {
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmtTime(t.created_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmtTime(t.called_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
-                  <Duration ticket={t} now={now} />
+                  <WaitCell ticket={t} now={now} />
+                </td>
+                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
+                  <ServiceCell ticket={t} now={now} />
+                </td>
+                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
+                  <TotalCell ticket={t} now={now} />
                 </td>
                 <td className="px-5 py-3 text-right">
                   {t.status === 'waiting' && (
@@ -137,7 +155,7 @@ export default function Tickets() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">
+                <td colSpan={12} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">
                   Nenhuma senha encontrada
                 </td>
               </tr>

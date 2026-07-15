@@ -32,12 +32,16 @@ router.get('/summary', async (req, res, next) => {
          COUNT(*) FILTER (WHERE status IN ('called', 'in_service'))::int AS in_progress,
          COUNT(*) FILTER (WHERE status = 'no_show')::int AS no_show,
          COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
-         ROUND(AVG(EXTRACT(EPOCH FROM (called_at - created_at)) / 60)
-           FILTER (WHERE called_at IS NOT NULL))::int AS avg_wait_min,
-         ROUND(AVG(EXTRACT(EPOCH FROM (finished_at - called_at)) / 60)
-           FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS avg_service_min,
-         ROUND(SUM(EXTRACT(EPOCH FROM (finished_at - called_at)) / 60)
-           FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS total_service_min
+         ROUND(AVG(EXTRACT(EPOCH FROM (called_at - created_at)))
+           FILTER (WHERE called_at IS NOT NULL))::int AS avg_wait_sec,
+         ROUND(AVG(EXTRACT(EPOCH FROM (finished_at - called_at)))
+           FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS avg_service_sec,
+         ROUND(SUM(EXTRACT(EPOCH FROM (finished_at - called_at)))
+           FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS total_service_sec,
+         ROUND(AVG(EXTRACT(EPOCH FROM (finished_at - created_at)))
+           FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS avg_total_sec,
+         ROUND(SUM(EXTRACT(EPOCH FROM (finished_at - created_at)))
+           FILTER (WHERE finished_at IS NOT NULL AND status = 'done'))::int AS total_operation_sec
        FROM tickets t WHERE ${where}`,
       params
     );
@@ -62,10 +66,10 @@ router.get('/summary', async (req, res, next) => {
     const { rows: byAttendant } = await query(
       `SELECT u.name, COUNT(t.id)::int AS total,
               COUNT(t.id) FILTER (WHERE t.status = 'done')::int AS done,
-              ROUND(AVG(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)) / 60)
-                FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS avg_service_min,
-              ROUND(SUM(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)) / 60)
-                FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS total_service_min
+              ROUND(AVG(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)))
+                FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS avg_service_sec,
+              ROUND(SUM(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)))
+                FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS total_service_sec
        FROM users u
        JOIN tickets t ON t.attendant_id = u.id AND ${where}
        GROUP BY u.id, u.name
@@ -93,14 +97,16 @@ router.get('/tickets', async (req, res, next) => {
     const rows = await fetchRows(from, to);
     if (req.query.format === 'csv') {
       const header =
-        'Senha;Nome;Tipo;Status;Guichê;Atendente;Data Emissão;Hora Emissão;Data Chamada;Hora Chamada;Data Finalização;Hora Finalização;Duração';
+        'Senha;Nome;Tipo;Status;Guichê;Atendente;Data Emissão;Hora Emissão;Data Chamada;Hora Chamada;Data Finalização;Hora Finalização;Espera;Atendimento;Total';
       const lines = rows.map((r) =>
         [r.code, r.customer_name || '', r.service_name, STATUS_PT[r.status] || r.status,
          r.counter_name || '', r.attendant_name || '',
          dPt(r.created_at), hPt(r.created_at),
          dPt(r.called_at), hPt(r.called_at),
          dPt(r.finished_at), hPt(r.finished_at),
-         r.status === 'done' ? fmtDur(r.service_sec) : '']
+         r.called_at ? fmtDur(r.wait_sec) : '',
+         r.status === 'done' ? fmtDur(r.service_sec) : '',
+         r.status === 'done' ? fmtDur(r.total_sec) : '']
           .map((v) => String(v).replaceAll(';', ','))
           .join(';')
       );

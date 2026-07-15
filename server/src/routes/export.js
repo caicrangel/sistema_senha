@@ -28,7 +28,9 @@ export async function fetchRows(from, to) {
     `SELECT t.code, t.customer_name, st.name AS service_name, t.status,
             c.name AS counter_name, u.name AS attendant_name,
             t.created_at, t.called_at, t.finished_at,
+            EXTRACT(EPOCH FROM (t.called_at - t.created_at))::int AS wait_sec,
             EXTRACT(EPOCH FROM (t.finished_at - t.called_at))::int AS service_sec,
+            EXTRACT(EPOCH FROM (t.finished_at - t.created_at))::int AS total_sec,
             ROUND(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)) / 60)::int AS service_min
      FROM tickets t
      JOIN service_types st ON st.id = t.service_type_id
@@ -78,7 +80,7 @@ export async function buildXlsx({ from, to, user }) {
   const header = [
     'Senha', 'Nome', 'Tipo de Atendimento', 'Status', 'Guichê', 'Atendente',
     'Data Emissão', 'Hora Emissão', 'Data Chamada', 'Hora Chamada',
-    'Data Finalização', 'Hora Finalização', 'Duração',
+    'Data Finalização', 'Hora Finalização', 'Espera', 'Atendimento', 'Total',
   ];
   const headerRow = ws.addRow(header);
   headerRow.font = { bold: true };
@@ -98,12 +100,14 @@ export async function buildXlsx({ from, to, user }) {
       dPt(r.created_at), hPt(r.created_at),
       dPt(r.called_at), hPt(r.called_at),
       dPt(r.finished_at), hPt(r.finished_at),
+      r.called_at ? fmtDur(r.wait_sec) : '',
       r.status === 'done' ? fmtDur(r.service_sec) : '',
+      r.status === 'done' ? fmtDur(r.total_sec) : '',
     ]);
   }
 
   ws.columns.forEach((col, i) => {
-    col.width = [10, 24, 24, 16, 12, 20, 13, 12, 13, 12, 15, 15, 13][i] || 14;
+    col.width = [10, 24, 24, 16, 12, 20, 13, 12, 13, 12, 15, 15, 12, 13, 12][i] || 14;
   });
 
   return wb.xlsx.writeBuffer();
@@ -112,17 +116,19 @@ export async function buildXlsx({ from, to, user }) {
 // ---------------------------------------------------------------- PDF
 
 const PDF_COLS = [
-  ['Senha', 42],
-  ['Nome', 94],
-  ['Tipo', 86],
-  ['Status', 70],
-  ['Guichê', 50],
-  ['Atendente', 84],
-  ['Dt. Emissão', 54],
-  ['Hora', 46],
-  ['Dt. Final.', 54],
-  ['Hora', 46],
-  ['Duração', 54],
+  ['Senha', 40],
+  ['Nome', 84],
+  ['Tipo', 78],
+  ['Status', 64],
+  ['Guichê', 46],
+  ['Atendente', 76],
+  ['Dt. Emissão', 52],
+  ['Hora', 44],
+  ['Dt. Final.', 52],
+  ['Hora', 44],
+  ['Espera', 48],
+  ['Atendim.', 48],
+  ['Total', 48],
 ];
 
 export async function buildPdf({ from, to, user }) {
@@ -191,7 +197,9 @@ export async function buildPdf({ from, to, user }) {
       r.attendant_name || '—',
       dPt(r.created_at), hPt(r.created_at),
       dPt(r.finished_at) || '—', hPt(r.finished_at) || '—',
-      r.status === 'done' ? fmtDur(r.service_sec) || '—' : '—',
+      r.called_at ? fmtDur(r.wait_sec) : '—',
+      r.status === 'done' ? fmtDur(r.service_sec) : '—',
+      r.status === 'done' ? fmtDur(r.total_sec) : '—',
     ];
     let x = left;
     cells.forEach((val, i) => {

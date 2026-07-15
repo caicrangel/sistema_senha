@@ -18,10 +18,6 @@ const fmtDurSec = (sec) => {
   return `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}min`;
 };
 
-// Formata minutos como "2h 15min" / "45 min"
-const fmtMin = (m) =>
-  m == null ? '—' : m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}min` : `${m} min`;
-
 export default function Reports() {
   const [from, setFrom] = useState(daysAgo(6));
   const [to, setTo] = useState(today());
@@ -111,13 +107,17 @@ export default function Reports() {
         </div>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatTile label="Total de senhas" value={t.total} accent="#2a78d6" />
         <StatTile label="Atendidas" value={t.done} accent="#1baf7a" />
-        <StatTile label="Espera média" value={t.avg_wait_min != null ? `${t.avg_wait_min} min` : '—'} accent="#2a78d6" />
-        <StatTile label="Atendimento médio" value={t.avg_service_min != null ? `${t.avg_service_min} min` : '—'} accent="#1baf7a" />
-        <StatTile label="Tempo total de atendimento" value={fmtMin(t.total_service_min)}
-          hint="Soma das senhas concluídas" accent="#4a3aa7" />
+        <StatTile label="Espera média" value={t.avg_wait_sec != null ? fmtDurSec(t.avg_wait_sec) : '—'}
+          hint="Emissão → chamada" accent="#eda100" />
+        <StatTile label="Atendimento médio" value={t.avg_service_sec != null ? fmtDurSec(t.avg_service_sec) : '—'}
+          hint="Chamada → finalização" accent="#1baf7a" />
+        <StatTile label="Operação média" value={t.avg_total_sec != null ? fmtDurSec(t.avg_total_sec) : '—'}
+          hint="Emissão → finalização" accent="#4a3aa7" />
+        <StatTile label="Tempo total de atendimento" value={t.total_service_sec != null ? fmtDurSec(t.total_service_sec) : '—'}
+          hint="Soma das concluídas" accent="#2a78d6" />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -161,8 +161,8 @@ export default function Reports() {
                 <td className="px-5 py-3 font-medium text-slate-900 dark:text-white">{a.name}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{a.total}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{a.done}</td>
-                <td className="px-5 py-3 font-semibold tabular-nums text-slate-900 dark:text-white">{fmtMin(a.total_service_min)}</td>
-                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmtMin(a.avg_service_min)}</td>
+                <td className="px-5 py-3 font-semibold tabular-nums text-slate-900 dark:text-white">{a.total_service_sec != null ? fmtDurSec(a.total_service_sec) : '—'}</td>
+                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{a.avg_service_sec != null ? fmtDurSec(a.avg_service_sec) : '—'}</td>
               </tr>
             ))}
             {(summary?.byAttendant || []).length === 0 && (
@@ -188,7 +188,9 @@ export default function Reports() {
               <th className="px-5 py-3">Atendente</th>
               <th className="px-5 py-3">Emitida</th>
               <th className="px-5 py-3">Finalizada</th>
-              <th className="px-5 py-3">Duração</th>
+              <th className="px-5 py-3">Espera</th>
+              <th className="px-5 py-3">Atendimento</th>
+              <th className="px-5 py-3">Total</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -203,12 +205,18 @@ export default function Reports() {
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmt(r.created_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmt(r.finished_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
+                  {r.called_at ? fmtDurSec(r.wait_sec) : '—'}
+                </td>
+                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
                   {r.status === 'done' ? fmtDurSec(r.service_sec) : '—'}
+                </td>
+                <td className="px-5 py-3 font-semibold tabular-nums text-slate-900 dark:text-white">
+                  {r.status === 'done' ? fmtDurSec(r.total_sec) : '—'}
                 </td>
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">Sem registros no período</td></tr>
+              <tr><td colSpan={11} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">Sem registros no período</td></tr>
             )}
           </tbody>
         </table>
