@@ -47,6 +47,14 @@ export default function Attendant() {
       setCurrent(t);
     });
 
+  // Adiantar: chama uma senha específica fora da ordem da fila
+  const callSpecific = (ticket) =>
+    act(async () => {
+      if (!confirm(`Adiantar a senha ${ticket.code}${ticket.customer_name ? ` (${ticket.customer_name})` : ''}? Ela será chamada fora da ordem da fila.`)) return;
+      const t = await api(`/tickets/${ticket.id}/call`, { method: 'POST', body: { counter_id: Number(counterId) } });
+      setCurrent(t);
+    });
+
   const selectCounter = (v) => {
     setCounterId(v);
     localStorage.setItem('senha_counter', v);
@@ -115,7 +123,12 @@ export default function Attendant() {
 
         <Card className="lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-900 dark:text-white">Fila de espera</h2>
+            <div>
+              <h2 className="font-semibold text-slate-900 dark:text-white">Fila de espera</h2>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                Ordem: maior prioridade primeiro; empate decidido pela chegada
+              </p>
+            </div>
             <span className="rounded-full bg-brand-soft px-3 py-1 text-sm font-bold text-brand-dark dark:bg-slate-800 dark:text-white">
               {queue.length} aguardando
             </span>
@@ -139,6 +152,15 @@ export default function Attendant() {
                 <span className="text-sm tabular-nums text-slate-500 dark:text-slate-400">
                   {new Date(t.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                 </span>
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1.5 text-xs"
+                  disabled={busy || !counterId}
+                  title={counterId ? 'Chamar esta senha fora da ordem' : 'Selecione um guichê primeiro'}
+                  onClick={() => callSpecific(t)}
+                >
+                  ⏩ Adiantar
+                </Button>
               </div>
             ))}
             {queue.length === 0 && (

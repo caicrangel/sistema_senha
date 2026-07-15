@@ -149,6 +149,48 @@ export default function ticketRoutes(io) {
     }
   });
 
+  // Adiantar/chamar uma senha específica da fila (fura a ordem quando necessário)
+  router.post('/:id/call', requireAuth, async (req, res, next) => {
+    const client = await pool.connect();
+    try {
+      const { counter_id } = req.body || {};
+      if (!counter_id) return res.status(400).json({ error: 'Selecione um guichê' });
+      await client.query('BEGIN');
+      // Bloqueia a linha para evitar que dois atendentes chamem a mesma senha
+      const { rows } = await client.query(
+        `SELECT id FROM tickets WHERE id = $1 AND status = 'waiting' FOR UPDATE SKIP LOCKED`,
+        [req.params.id]
+      );
+      if (!rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Esta senha já foi chamada por outro guichê' });
+      }
+      const { rows: updated } = await client.query(
+        `UPDATE tickets
+         SET status = 'called', called_at = now(), counter_id = $1, attendant_id = $2
+         WHERE id = $3 RETURNING *`,
+        [counter_id, req.user.id, rows[0].id]
+      );
+      await client.query('COMMIT');
+      const { rows: full } = await query(
+        `SELECT t.*, st.name AS service_name, st.color, c.name AS counter_name
+         FROM tickets t
+         JOIN service_types st ON st.id = t.service_type_id
+         LEFT JOIN counters c ON c.id = t.counter_id
+         WHERE t.id = $1`,
+        [updated[0].id]
+      );
+      io.emit('ticket:called', full[0]);
+      await broadcastQueue();
+      res.json(full[0]);
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      next(e);
+    } finally {
+      client.release();
+    }
+  });
+
   // Rechamar (repete o anúncio no painel)
   router.post('/:id/recall', requireAuth, async (req, res, next) => {
     try {

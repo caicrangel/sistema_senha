@@ -318,27 +318,87 @@ function ServiceTypes() {
       </Card>
 
       <Card className="lg:col-span-2">
-        <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Tipos cadastrados</h2>
-        <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800 dark:divide-slate-800">
+        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Tipos cadastrados</h2>
+        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Regra da fila: chama sempre a maior prioridade; empate é decidido pela ordem de chegada
+        </p>
+        <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
           {items.map((t) => (
-            <div key={t.id} className="flex items-center gap-4 py-3">
-              <span className="grid h-10 w-14 place-items-center rounded-lg font-black text-white"
-                style={{ backgroundColor: t.color }}>
-                {t.prefix}
-              </span>
-              <div className="flex-1">
-                <div className={`font-medium ${t.active ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
-                  {t.name}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">Prioridade {t.priority}</div>
-              </div>
-              <Button variant={t.active ? 'secondary' : 'success'} onClick={() => toggle(t)}>
-                {t.active ? 'Desativar' : 'Ativar'}
-              </Button>
-            </div>
+            <ServiceTypeRow key={t.id} type={t} onToggle={toggle} onSaved={load} />
           ))}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function ServiceTypeRow({ type: t, onToggle, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ name: t.name, prefix: t.prefix, priority: t.priority, color: t.color });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await api(`/admin/service-types/${t.id}`, { method: 'PUT', body: form });
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-3 py-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Input label="Nome" value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Input label="Prefixo" maxLength={3} value={form.prefix}
+            onChange={(e) => setForm({ ...form, prefix: e.target.value.toUpperCase() })} />
+          <Input label="Prioridade" type="number" min={1} max={10} value={form.priority}
+            onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} />
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Cor</span>
+            <input type="color" value={form.color}
+              onChange={(e) => setForm({ ...form, color: e.target.value })}
+              className="h-9 w-full cursor-pointer rounded-xl border border-slate-300 dark:border-slate-600" />
+          </label>
+        </div>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          Alterar o prefixo vale apenas para senhas novas; as já emitidas mantêm o código original.
+        </p>
+        {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+        <div className="flex gap-2">
+          <Button onClick={save} disabled={busy}>{busy ? 'Salvando…' : 'Salvar alterações'}</Button>
+          <Button variant="secondary" onClick={() => { setEditing(false); setError(''); setForm({ name: t.name, prefix: t.prefix, priority: t.priority, color: t.color }); }}>
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-4 py-3">
+      <span className="grid h-10 w-14 place-items-center rounded-lg font-black text-white"
+        style={{ backgroundColor: t.color }}>
+        {t.prefix}
+      </span>
+      <div className="flex-1">
+        <div className={`font-medium ${t.active ? 'text-slate-900 dark:text-white' : 'text-slate-400 line-through'}`}>
+          {t.name}
+        </div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">Prioridade {t.priority}</div>
+      </div>
+      <Button variant="secondary" onClick={() => setEditing(true)}>✏️ Editar</Button>
+      <Button variant={t.active ? 'secondary' : 'success'} onClick={() => onToggle(t)}>
+        {t.active ? 'Desativar' : 'Ativar'}
+      </Button>
     </div>
   );
 }
