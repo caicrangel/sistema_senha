@@ -25,6 +25,26 @@ const PERM_OPTIONS = [
   ['relatorios', 'Relatórios'],
 ];
 
+// Tipo de login legível a partir do perfil/permissões do usuário
+function userType(u) {
+  if (u.role === 'admin') return 'Superusuário';
+  const p = u.permissions || [];
+  if (p.includes('medico') && !p.includes('atendimento') && !p.includes('senhas')) return 'Médico';
+  if (p.includes('medico')) return 'Recepção + Médico';
+  if (p.includes('atendimento') || p.includes('senhas')) return 'Atendente';
+  if (p.includes('dashboard') || p.includes('relatorios')) return 'Gestão';
+  return 'Sem acesso';
+}
+
+const TYPE_STYLE = {
+  'Superusuário': 'bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200',
+  'Médico': 'bg-teal-100 text-teal-800 dark:bg-teal-900/50 dark:text-teal-200',
+  'Recepção + Médico': 'bg-teal-100 text-teal-800 dark:bg-teal-900/50 dark:text-teal-200',
+  'Atendente': 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200',
+  'Gestão': 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
+  'Sem acesso': 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+};
+
 export default function Settings() {
   const [tab, setTab] = useState('types');
 
@@ -1401,16 +1421,52 @@ function Users() {
       </Card>
       <Card className="lg:col-span-2">
         <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Usuários cadastrados</h2>
-        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
           O login (usuário) não muda após a criação; nome, perfil e senha podem ser editados
         </p>
-        <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
-          {items.map((u) => (
-            <UserRow key={u.id} user={u} specialties={specialties} onSaved={load} />
-          ))}
-        </div>
+        <UsersList items={items} specialties={specialties} onSaved={load} />
       </Card>
     </div>
+  );
+}
+
+// Lista de usuários com filtro por tipo de login e contagem por grupo
+function UsersList({ items, specialties, onSaved }) {
+  const [filter, setFilter] = useState('Todos');
+  const counts = items.reduce((acc, u) => {
+    const t = userType(u);
+    acc[t] = (acc[t] || 0) + 1;
+    return acc;
+  }, {});
+  const types = Object.keys(counts).sort();
+  const shown = filter === 'Todos' ? items : items.filter((u) => userType(u) === filter);
+
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {['Todos', ...types].map((t) => (
+          <button
+            key={t}
+            onClick={() => setFilter(t)}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              filter === t
+                ? 'bg-brand text-white'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+          >
+            {t}{t !== 'Todos' && ` (${counts[t]})`}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
+        {shown.map((u) => (
+          <UserRow key={u.id} user={u} specialties={specialties} onSaved={onSaved} />
+        ))}
+        {shown.length === 0 && (
+          <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">Nenhum usuário deste tipo</p>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -1498,8 +1554,8 @@ function UserRow({ user: u, specialties, onSaved }) {
       <div className="flex-1">
         <div className={`font-medium ${u.active ? 'text-slate-900 dark:text-white' : 'text-slate-400 line-through'}`}>
           {u.name}
-          <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {u.role === 'admin' ? 'Superusuário' : 'Atendente'}
+          <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${TYPE_STYLE[userType(u)] || TYPE_STYLE['Sem acesso']}`}>
+            {userType(u)}
           </span>
           {u.specialty_name && (
             <span className="ml-2 rounded-full bg-brand-soft px-2 py-0.5 text-xs font-semibold text-brand-dark dark:bg-slate-700 dark:text-slate-200">

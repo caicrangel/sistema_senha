@@ -84,7 +84,26 @@ router.get('/summary', async (req, res, next) => {
       params
     );
 
-    res.json({ totals: totals[0], byType, byHour, byAttendant, byDay });
+    // Performance por médico (fase médica: fila do médico → fim da consulta)
+    const { rows: byDoctor } = await query(
+      `SELECT u.name, sp.name AS specialty_name,
+              COUNT(t.id)::int AS total,
+              COUNT(t.id) FILTER (WHERE t.status = 'done')::int AS done,
+              ROUND(AVG(EXTRACT(EPOCH FROM (t.med_called_at - t.forwarded_at)))
+                FILTER (WHERE t.med_called_at IS NOT NULL))::int AS avg_wait_sec,
+              ROUND(AVG(EXTRACT(EPOCH FROM (t.finished_at - t.med_called_at)))
+                FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS avg_consult_sec,
+              ROUND(SUM(EXTRACT(EPOCH FROM (t.finished_at - t.med_called_at)))
+                FILTER (WHERE t.finished_at IS NOT NULL AND t.status = 'done'))::int AS total_consult_sec
+       FROM users u
+       LEFT JOIN specialties sp ON sp.id = u.specialty_id
+       JOIN tickets t ON t.doctor_id = u.id AND t.stage = 'medical' AND ${where}
+       GROUP BY u.id, u.name, sp.name
+       ORDER BY total DESC`,
+      params
+    );
+
+    res.json({ totals: totals[0], byType, byHour, byAttendant, byDoctor, byDay });
   } catch (e) {
     next(e);
   }

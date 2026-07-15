@@ -35,6 +35,10 @@ export default function Layout() {
         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
     }`;
 
+  // Perfil médico: só tem a permissão de médico (não usa Totem/Painel da recepção)
+  const isDoctorProfile =
+    !isAdmin && hasPerm('medico') && !hasPerm('atendimento') && !hasPerm('senhas');
+
   // [rota, ícone, rótulo, permissão] — Configurações é sempre exclusiva do superusuário
   const medicalOn = settings.flow_medical === '1';
   const links = [
@@ -91,23 +95,26 @@ export default function Layout() {
           })}
         </nav>
 
-        <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
-          {!collapsed && (
-            <div className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Telas públicas
+        {/* Telas públicas (Totem/Painel) não fazem sentido para o perfil médico */}
+        {!isDoctorProfile && (
+          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+            {!collapsed && (
+              <div className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Telas públicas
+              </div>
+            )}
+            <div className="mt-2 flex flex-col gap-1">
+              <a href={publicUrl('/totem')} target="_blank" rel="noreferrer" title="Abrir Totem"
+                className={`rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 ${collapsed ? 'text-center' : ''}`}>
+                🖥️ {!collapsed && 'Abrir Totem'}
+              </a>
+              <a href={publicUrl('/painel')} target="_blank" rel="noreferrer" title="Abrir Painel TV"
+                className={`rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 ${collapsed ? 'text-center' : ''}`}>
+                📺 {!collapsed && 'Abrir Painel TV'}
+              </a>
             </div>
-          )}
-          <div className="mt-2 flex flex-col gap-1">
-            <a href={publicUrl('/totem')} target="_blank" rel="noreferrer" title="Abrir Totem"
-              className={`rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 ${collapsed ? 'text-center' : ''}`}>
-              🖥️ {!collapsed && 'Abrir Totem'}
-            </a>
-            <a href={publicUrl('/painel')} target="_blank" rel="noreferrer" title="Abrir Painel TV"
-              className={`rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 ${collapsed ? 'text-center' : ''}`}>
-              📺 {!collapsed && 'Abrir Painel TV'}
-            </a>
           </div>
-        </div>
+        )}
 
         <div className="mt-auto border-t border-slate-200 pt-3 dark:border-slate-800">
           <button

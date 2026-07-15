@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, downloadFile } from '../lib/api.js';
 import { Card, PageTitle, Button, Input, StatusBadge } from '../components/ui.jsx';
 import { StatTile, BarChart, HBarChart } from '../components/charts.jsx';
+import { useBranding } from '../lib/branding.jsx';
 
 // Datas no fuso local do usuário (não em UTC — à noite a data UTC já virou)
 const localDate = (d) => d.toLocaleDateString('en-CA');
@@ -19,6 +20,8 @@ const fmtDurSec = (sec) => {
 };
 
 export default function Reports() {
+  const { settings } = useBranding();
+  const medicalOn = settings.flow_medical === '1';
   const [from, setFrom] = useState(daysAgo(6));
   const [to, setTo] = useState(today());
   const [summary, setSummary] = useState(null);
@@ -140,7 +143,9 @@ export default function Reports() {
 
       <Card className="mt-6 overflow-x-auto p-0">
         <div className="px-5 py-4">
-          <h2 className="font-semibold text-slate-900 dark:text-white">Atendimento por colaborador</h2>
+          <h2 className="font-semibold text-slate-900 dark:text-white">
+            Atendimento por colaborador{medicalOn ? ' (recepção)' : ''}
+          </h2>
           <p className="text-xs text-slate-400 dark:text-slate-500">
             Tempo contado da chamada até a finalização das senhas concluídas
           </p>
@@ -171,6 +176,47 @@ export default function Reports() {
           </tbody>
         </table>
       </Card>
+
+      {/* Relatório de tempo por médico — só quando o fluxo médico está habilitado */}
+      {medicalOn && (
+        <Card className="mt-6 overflow-x-auto p-0">
+          <div className="px-5 py-4">
+            <h2 className="font-semibold text-slate-900 dark:text-white">🩺 Atendimento por médico (consultório)</h2>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Espera contada do encaminhamento até a chamada; consulta contada da chamada até a finalização
+            </p>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-y border-slate-200 dark:border-slate-700 text-left text-xs uppercase tracking-wide text-slate-500">
+                <th className="px-5 py-3">Médico</th>
+                <th className="px-5 py-3">Especialidade</th>
+                <th className="px-5 py-3">Pacientes chamados</th>
+                <th className="px-5 py-3">Concluídos</th>
+                <th className="px-5 py-3">Espera média (fila médica)</th>
+                <th className="px-5 py-3">Consulta média</th>
+                <th className="px-5 py-3">Tempo total em consultas</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {(summary?.byDoctor || []).map((d) => (
+                <tr key={d.name} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                  <td className="px-5 py-3 font-medium text-slate-900 dark:text-white">{d.name}</td>
+                  <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{d.specialty_name || '—'}</td>
+                  <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{d.total}</td>
+                  <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{d.done}</td>
+                  <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{d.avg_wait_sec != null ? fmtDurSec(d.avg_wait_sec) : '—'}</td>
+                  <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{d.avg_consult_sec != null ? fmtDurSec(d.avg_consult_sec) : '—'}</td>
+                  <td className="px-5 py-3 font-semibold tabular-nums text-slate-900 dark:text-white">{d.total_consult_sec != null ? fmtDurSec(d.total_consult_sec) : '—'}</td>
+                </tr>
+              ))}
+              {(summary?.byDoctor || []).length === 0 && (
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-400 dark:text-slate-500">Nenhum atendimento médico no período</td></tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       <Card className="mt-6 overflow-x-auto p-0">
         <div className="flex items-center justify-between px-5 py-4">
