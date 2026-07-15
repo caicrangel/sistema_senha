@@ -127,7 +127,13 @@ export async function seed(bcrypt) {
      ('totem_theme', 'dark'),
      ('panel_theme', 'dark'),
      ('panel_sound', 'on'),
-     ('panel_last_calls', '5')
+     ('panel_last_calls', '5'),
+     ('app_domain', ''),
+     ('pwd_min_length', '6'),
+     ('pwd_require_upper', '0'),
+     ('pwd_require_lower', '0'),
+     ('pwd_require_number', '0'),
+     ('pwd_require_special', '0')
      ON CONFLICT (key) DO NOTHING`
   );
 }

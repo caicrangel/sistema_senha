@@ -3,15 +3,17 @@ import { query } from '../db.js';
 import { requireAuth, requireAdmin } from '../auth.js';
 
 const SETTING_KEYS = [
-  'company_name', 'brand_color', 'logo',
+  'company_name', 'brand_color', 'logo', 'app_domain',
   'totem_theme',
   'panel_theme', 'panel_sound', 'panel_last_calls',
   'smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_pass',
   'smtp_from_name', 'smtp_from_email',
+  'pwd_min_length', 'pwd_require_upper', 'pwd_require_lower',
+  'pwd_require_number', 'pwd_require_special',
 ];
 
-// Chaves sensíveis: nunca saem no endpoint público, e a senha nunca volta ao navegador
-const PRIVATE_PREFIX = 'smtp_';
+// Chaves sensíveis: nunca saem no endpoint público (SMTP e política de senha)
+const isPrivate = (key) => key.startsWith('smtp_') || key.startsWith('pwd_');
 
 export default function settingsRoutes(io) {
   const router = Router();
@@ -21,9 +23,7 @@ export default function settingsRoutes(io) {
     try {
       const { rows } = await query('SELECT key, value FROM settings');
       res.json(
-        Object.fromEntries(
-          rows.filter((r) => !r.key.startsWith(PRIVATE_PREFIX)).map((r) => [r.key, r.value])
-        )
+        Object.fromEntries(rows.filter((r) => !isPrivate(r.key)).map((r) => [r.key, r.value]))
       );
     } catch (e) {
       next(e);
@@ -61,7 +61,7 @@ export default function settingsRoutes(io) {
       // O painel/totem só recebe as chaves públicas
       io.emit(
         'settings:update',
-        Object.fromEntries(Object.entries(all).filter(([k]) => !k.startsWith(PRIVATE_PREFIX)))
+        Object.fromEntries(Object.entries(all).filter(([k]) => !isPrivate(k)))
       );
       all.smtp_pass_set = all.smtp_pass ? '1' : '';
       delete all.smtp_pass;

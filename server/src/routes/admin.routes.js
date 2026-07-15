@@ -6,6 +6,20 @@ import { requireAuth, requireAdmin, PERMISSIONS, parsePermissions } from '../aut
 const clean = (perms) =>
   JSON.stringify((Array.isArray(perms) ? perms : []).filter((p) => PERMISSIONS.includes(p)));
 
+// Valida a senha contra a política configurada em Configurações > Segurança
+async function passwordError(password) {
+  const { rows } = await query(`SELECT key, value FROM settings WHERE key LIKE 'pwd_%'`);
+  const p = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const min = Math.max(4, Math.min(32, parseInt(p.pwd_min_length, 10) || 6));
+  const fails = [];
+  if (!password || password.length < min) fails.push(`mínimo de ${min} caracteres`);
+  if (p.pwd_require_upper === '1' && !/[A-Z]/.test(password)) fails.push('uma letra maiúscula');
+  if (p.pwd_require_lower === '1' && !/[a-z]/.test(password)) fails.push('uma letra minúscula');
+  if (p.pwd_require_number === '1' && !/\d/.test(password)) fails.push('um número');
+  if (p.pwd_require_special === '1' && !/[^A-Za-z0-9]/.test(password)) fails.push('um caractere especial');
+  return fails.length ? `A senha não atende à política: exige ${fails.join(', ')}.` : null;
+}
+
 export default function adminRoutes(io) {
   const router = Router();
 
@@ -142,9 +156,11 @@ export default function adminRoutes(io) {
   router.post('/users', requireAuth, requireAdmin, async (req, res, next) => {
     try {
       const { name, username, password, role = 'attendant', permissions } = req.body || {};
-      if (!name?.trim() || !username?.trim() || !password || password.length < 6) {
-        return res.status(400).json({ error: 'Preencha nome, usuário e senha (mínimo 6 caracteres)' });
+      if (!name?.trim() || !username?.trim() || !password) {
+        return res.status(400).json({ error: 'Preencha nome, usuário e senha' });
       }
+      const pwErr = await passwordError(password);
+      if (pwErr) return res.status(400).json({ error: pwErr });
       const hash = await bcrypt.hash(password, 10);
       const { rows } = await query(
         `INSERT INTO users (name, username, password_hash, role, permissions)
@@ -172,7 +188,8 @@ export default function adminRoutes(io) {
       }
       let hash = null;
       if (password) {
-        if (password.length < 6) return res.status(400).json({ error: 'Senha mínima de 6 caracteres' });
+        const pwErr = await passwordError(password);
+        if (pwErr) return res.status(400).json({ error: pwErr });
         hash = await bcrypt.hash(password, 10);
       }
       const { rows } = await query(
@@ -212,17 +229,20 @@ export default function adminRoutes(io) {
     }
   });
 
-  // Limpa senhas: todas ou apenas anteriores a uma data (preserva cadastros)
+  // Limpa senhas: todas ou um período de datas (preserva cadastros)
   router.post('/db/clear-tickets', requireAuth, requireAdmin, async (req, res, next) => {
     try {
-      const { all, before } = req.body || {};
+      const { all, from, to, before } = req.body || {};
       let result;
       if (all === true) {
         result = await query('DELETE FROM tickets');
+      } else if (from && to) {
+        if (from > to) return res.status(400).json({ error: 'A data inicial deve ser anterior à final' });
+        result = await query('DELETE FROM tickets WHERE created_at::date BETWEEN $1 AND $2', [from, to]);
       } else if (before) {
         result = await query('DELETE FROM tickets WHERE created_at::date < $1', [before]);
       } else {
-        return res.status(400).json({ error: 'Informe uma data limite ou confirme a limpeza total' });
+        return res.status(400).json({ error: 'Informe o período (De/Até) ou confirme a limpeza total' });
       }
       io.emit('queue:update', { current: null, lastCalls: [], waiting: [] });
       io.emit('config:update');

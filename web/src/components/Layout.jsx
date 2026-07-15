@@ -22,6 +22,10 @@ export default function Layout() {
     navigate('/login');
   };
 
+  // Com o domínio intranet configurado, os atalhos públicos usam a máscara (sem IP:porta)
+  const base = (settings.app_domain || '').trim().replace(/\/+$/, '');
+  const publicUrl = (path) => (base ? `${base}${path}` : path);
+
   const linkClass = ({ isActive }) =>
     `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
       collapsed ? 'justify-center' : ''
@@ -92,11 +96,11 @@ export default function Layout() {
             </div>
           )}
           <div className="mt-2 flex flex-col gap-1">
-            <a href="/totem" target="_blank" rel="noreferrer" title="Abrir Totem"
+            <a href={publicUrl('/totem')} target="_blank" rel="noreferrer" title="Abrir Totem"
               className={`rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 ${collapsed ? 'text-center' : ''}`}>
               🖥️ {!collapsed && 'Abrir Totem'}
             </a>
-            <a href="/painel" target="_blank" rel="noreferrer" title="Abrir Painel TV"
+            <a href={publicUrl('/painel')} target="_blank" rel="noreferrer" title="Abrir Painel TV"
               className={`rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 ${collapsed ? 'text-center' : ''}`}>
               📺 {!collapsed && 'Abrir Painel TV'}
             </a>

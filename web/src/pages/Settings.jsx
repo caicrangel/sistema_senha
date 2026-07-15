@@ -11,6 +11,7 @@ const TABS = [
   ['tv', '📺 Painel TV'],
   ['system', '🏢 Sistema'],
   ['email', '📧 E-mail'],
+  ['security', '🔐 Segurança'],
   ['db', '🗄️ Banco de dados'],
 ];
 
@@ -51,6 +52,7 @@ export default function Settings() {
       {tab === 'tv' && <PanelTvTab />}
       {tab === 'system' && <SystemTab />}
       {tab === 'email' && <EmailTab />}
+      {tab === 'security' && <SecurityTab />}
       {tab === 'db' && <DatabaseTab />}
     </div>
   );
@@ -343,7 +345,7 @@ function SchedulesCard() {
 
 function DatabaseTab() {
   const [stats, setStats] = useState(null);
-  const [before, setBefore] = useState('');
+  const [range, setRange] = useState({ from: '', to: '' });
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -365,12 +367,14 @@ function DatabaseTab() {
     }
   };
 
-  const clearBefore = () =>
+  const br = (d) => d.split('-').reverse().join('/');
+
+  const clearRange = () =>
     run(async () => {
-      if (!before) throw new Error('Escolha a data limite');
-      if (!confirm(`Excluir TODAS as senhas anteriores a ${before.split('-').reverse().join('/')}? Elas saem dos relatórios definitivamente.`)) return;
-      const r = await api('/admin/db/clear-tickets', { method: 'POST', body: { before } });
-      setMsg(`${r.removed} senha(s) removida(s).`);
+      if (!range.from || !range.to) throw new Error('Escolha as datas De e Até');
+      if (!confirm(`Excluir TODAS as senhas emitidas de ${br(range.from)} até ${br(range.to)}? Elas saem dos relatórios definitivamente.`)) return;
+      const r = await api('/admin/db/clear-tickets', { method: 'POST', body: range });
+      setMsg(`${r.removed} senha(s) removida(s) do período ${br(range.from)} a ${br(range.to)}.`);
     });
 
   const clearAll = () =>
@@ -433,15 +437,21 @@ function DatabaseTab() {
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
             <div className="mb-2 text-sm font-medium text-slate-900 dark:text-white">
-              Limpar senhas antigas
+              Limpar senhas de um período
             </div>
-            <div className="flex items-end gap-3">
-              <Input label="Excluir senhas anteriores a" type="date" value={before}
-                onChange={(e) => setBefore(e.target.value)} />
-              <Button variant="danger" disabled={busy || !before} onClick={clearBefore}>
-                Limpar antigas
+            <div className="flex flex-wrap items-end gap-3">
+              <Input label="De" type="date" value={range.from}
+                onChange={(e) => setRange({ ...range, from: e.target.value })} />
+              <Input label="Até" type="date" value={range.to}
+                onChange={(e) => setRange({ ...range, to: e.target.value })} />
+              <Button variant="danger" disabled={busy || !range.from || !range.to} onClick={clearRange}>
+                Limpar período
               </Button>
             </div>
+            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+              Exclui as senhas emitidas entre as duas datas, inclusive. Para expurgo de senhas
+              antigas, use De = data mais antiga do banco e Até = o limite desejado.
+            </p>
           </div>
 
           <div className="rounded-xl border border-red-200 bg-red-50/50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
@@ -582,13 +592,120 @@ function SystemTab() {
         <SaveRow onSave={() => save(['company_name', 'logo', 'brand_color'])} saved={saved} error={error} label="Salvar identidade" />
       </Card>
 
+      <div className="flex flex-col gap-6">
+        <Card>
+          <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Domínio intranet</h2>
+          <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+            Máscara amigável para acessar o sistema sem expor IP e porta aos usuários
+          </p>
+          <Input
+            label="Endereço do sistema (com http://)"
+            placeholder="http://senhas.clinica.local"
+            value={form.app_domain || ''}
+            onChange={(e) => setForm({ ...form, app_domain: e.target.value })}
+          />
+          <div className="mt-3 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+            <p className="mb-1 font-semibold text-slate-700 dark:text-slate-300">Como ativar a máscara na rede:</p>
+            <p>1. No <b>.env</b> do servidor, defina <code>HTTP_PORT=80</code> e rode <code>docker compose up -d</code> — assim o endereço dispensa a porta.</p>
+            <p>2. No servidor DNS da rede (ou no roteador), crie um registro <b>A</b> apontando o domínio escolhido para o IP deste servidor. Sem DNS interno, adicione o IP e o domínio no arquivo <i>hosts</i> das estações.</p>
+            <p>3. Salve o endereço acima: os atalhos "Abrir Totem" e "Abrir Painel TV" do menu passam a usar o domínio, e é ele que você configura nos quiosques.</p>
+            <p className="mt-1">Se um dia hospedar fora da intranet, basta trocar este campo pelo endereço público (e aí recomendamos HTTPS via proxy reverso).</p>
+          </div>
+          <SaveRow onSave={() => save(['app_domain'])} saved={saved} error={error} label="Salvar domínio" />
+        </Card>
+
+        <Card>
+          <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Tema da área interna</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            O tema claro/escuro da área interna é uma preferência individual: cada usuário escolhe
+            no botão 🌙/☀️ do menu lateral e fica salvo no navegador da estação dele.
+            Os temas do Totem e do Painel TV ficam nas abas específicas dessas telas.
+          </p>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Segurança
+
+function SecurityTab() {
+  const [form, setForm] = useState({
+    pwd_min_length: '6', pwd_require_upper: '0', pwd_require_lower: '0',
+    pwd_require_number: '0', pwd_require_special: '0',
+  });
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api('/admin/settings').then((s) => setForm((p) => ({ ...p, ...s }))).catch(() => {});
+  }, []);
+
+  const save = async () => {
+    setMsg(''); setError('');
+    try {
+      await api('/admin/settings', {
+        method: 'PUT',
+        body: {
+          pwd_min_length: String(Math.max(4, Math.min(32, Number(form.pwd_min_length) || 6))),
+          pwd_require_upper: form.pwd_require_upper,
+          pwd_require_lower: form.pwd_require_lower,
+          pwd_require_number: form.pwd_require_number,
+          pwd_require_special: form.pwd_require_special,
+        },
+      });
+      setMsg('Política de senha salva. Vale para novos usuários e trocas de senha.');
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const toggles = [
+    ['pwd_require_upper', 'Exigir letra maiúscula (A–Z)'],
+    ['pwd_require_lower', 'Exigir letra minúscula (a–z)'],
+    ['pwd_require_number', 'Exigir número (0–9)'],
+    ['pwd_require_special', 'Exigir caractere especial (!@#$…)'],
+  ];
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
       <Card>
-        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Tema da área interna</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          O tema claro/escuro da área interna é uma preferência individual: cada usuário escolhe
-          no botão 🌙/☀️ do menu lateral e fica salvo no navegador da estação dele.
-          Os temas do Totem e do Painel TV ficam nas abas específicas dessas telas.
+        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Política de senha dos usuários</h2>
+        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Aplicada pelo servidor ao criar usuários e redefinir senhas. Senhas já existentes
+          continuam válidas até a próxima troca.
         </p>
+        <div className="flex flex-col gap-3">
+          <Input label="Tamanho mínimo (4 a 32 caracteres)" type="number" min={4} max={32}
+            value={form.pwd_min_length}
+            onChange={(e) => setForm({ ...form, pwd_min_length: e.target.value })} />
+          <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+            {toggles.map(([k, label]) => (
+              <label key={k} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input type="checkbox" className="h-4 w-4 accent-[var(--brand)]"
+                  checked={form[k] === '1'}
+                  onChange={(e) => setForm({ ...form, [k]: e.target.checked ? '1' : '0' })} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-3">
+          <Button onClick={save}>Salvar política</Button>
+          {msg && <span className="text-sm font-medium text-emerald-600">{msg}</span>}
+          {error && <span className="text-sm text-red-600">{error}</span>}
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Boas práticas ao expor o sistema</h2>
+        <ul className="list-disc space-y-2 pl-5 text-sm text-slate-500 dark:text-slate-400">
+          <li>Troque o segredo JWT no <b>.env</b> (<code>JWT_SECRET</code>) por um valor longo e aleatório antes de qualquer exposição.</li>
+          <li>Altere a senha do usuário <b>admin</b> padrão e do banco (<code>POSTGRES_PASSWORD</code>).</li>
+          <li>Para acesso fora da intranet, coloque um proxy reverso com <b>HTTPS</b> (Nginx/Caddy/Traefik) na frente do sistema.</li>
+          <li>Ative os requisitos de senha ao lado e aumente o tamanho mínimo (12+ para exposição externa).</li>
+          <li>Sessões expiram automaticamente em 12 horas; usuários desativados perdem o acesso no próximo login.</li>
+        </ul>
       </Card>
     </div>
   );
