@@ -72,6 +72,25 @@ CREATE TABLE IF NOT EXISTS ads (
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS
   permissions TEXT NOT NULL DEFAULT '["atendimento","senhas"]';
+
+CREATE TABLE IF NOT EXISTS email_schedules (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  recipients TEXT NOT NULL,
+  frequency TEXT NOT NULL DEFAULT 'monthly' CHECK (frequency IN ('daily', 'weekly', 'monthly')),
+  send_time TEXT NOT NULL DEFAULT '07:00',
+  weekday INT NOT NULL DEFAULT 1,
+  monthday INT NOT NULL DEFAULT 1,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  include_summary BOOLEAN NOT NULL DEFAULT TRUE,
+  include_attendants BOOLEAN NOT NULL DEFAULT TRUE,
+  attach_pdf BOOLEAN NOT NULL DEFAULT TRUE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  last_sent_at TIMESTAMPTZ,
+  last_status TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 export async function migrate() {

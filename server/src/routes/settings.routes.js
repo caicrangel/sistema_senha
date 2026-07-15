@@ -6,16 +6,38 @@ const SETTING_KEYS = [
   'company_name', 'brand_color', 'logo',
   'totem_theme',
   'panel_theme', 'panel_sound', 'panel_last_calls',
+  'smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_pass',
+  'smtp_from_name', 'smtp_from_email',
 ];
+
+// Chaves sensíveis: nunca saem no endpoint público, e a senha nunca volta ao navegador
+const PRIVATE_PREFIX = 'smtp_';
 
 export default function settingsRoutes(io) {
   const router = Router();
 
-  // Público: login, totem e painel precisam da identidade visual
+  // Público: login, totem e painel precisam da identidade visual (sem chaves SMTP)
   router.get('/settings', async (_req, res, next) => {
     try {
       const { rows } = await query('SELECT key, value FROM settings');
-      res.json(Object.fromEntries(rows.map((r) => [r.key, r.value])));
+      res.json(
+        Object.fromEntries(
+          rows.filter((r) => !r.key.startsWith(PRIVATE_PREFIX)).map((r) => [r.key, r.value])
+        )
+      );
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Superusuário: todas as configurações (senha SMTP mascarada)
+  router.get('/admin/settings', requireAuth, requireAdmin, async (_req, res, next) => {
+    try {
+      const { rows } = await query('SELECT key, value FROM settings');
+      const all = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+      all.smtp_pass_set = all.smtp_pass ? '1' : '';
+      delete all.smtp_pass;
+      res.json(all);
     } catch (e) {
       next(e);
     }
@@ -36,7 +58,13 @@ export default function settingsRoutes(io) {
       }
       const { rows } = await query('SELECT key, value FROM settings');
       const all = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-      io.emit('settings:update', all);
+      // O painel/totem só recebe as chaves públicas
+      io.emit(
+        'settings:update',
+        Object.fromEntries(Object.entries(all).filter(([k]) => !k.startsWith(PRIVATE_PREFIX)))
+      );
+      all.smtp_pass_set = all.smtp_pass ? '1' : '';
+      delete all.smtp_pass;
       res.json(all);
     } catch (e) {
       next(e);

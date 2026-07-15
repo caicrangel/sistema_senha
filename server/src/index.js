@@ -9,6 +9,8 @@ import ticketRoutes from './routes/tickets.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import reportRoutes from './routes/reports.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import emailRoutes from './routes/email.routes.js';
+import { startEmailScheduler } from './email.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -23,6 +25,7 @@ app.use('/api/tickets', ticketRoutes(io));
 app.use('/api/admin', adminRoutes(io));
 app.use('/api/reports', reportRoutes);
 app.use('/api', settingsRoutes(io));
+app.use('/api/admin', emailRoutes());
 
 app.use((err, _req, res, _next) => {
   console.error(err);
@@ -43,6 +46,7 @@ async function start() {
     }
   }
   await seed(bcrypt);
+  startEmailScheduler();
   server.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));
 }
 

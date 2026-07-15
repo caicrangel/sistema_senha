@@ -10,6 +10,7 @@ const TABS = [
   ['totem', '🖥️ Tela Totem'],
   ['tv', '📺 Painel TV'],
   ['system', '🏢 Sistema'],
+  ['email', '📧 E-mail'],
   ['db', '🗄️ Banco de dados'],
 ];
 
@@ -49,8 +50,292 @@ export default function Settings() {
       {tab === 'totem' && <TotemTab />}
       {tab === 'tv' && <PanelTvTab />}
       {tab === 'system' && <SystemTab />}
+      {tab === 'email' && <EmailTab />}
       {tab === 'db' && <DatabaseTab />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- E-mail (SMTP + relatórios automáticos)
+
+const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const FREQ_LABEL = { daily: 'Diário', weekly: 'Semanal', monthly: 'Mensal' };
+const EMPTY_SCHEDULE = {
+  name: '', recipients: '', frequency: 'monthly', send_time: '07:00', weekday: 1, monthday: 1,
+  subject: 'Relatório de atendimento — {periodo}',
+  body: 'Olá,\n\nSegue o relatório de atendimento do período {periodo}.\n\nForam emitidas {total} senhas, com {atendidas} atendimentos concluídos. A espera média foi de {espera_media} e o tempo total de atendimento somou {tempo_total}.\n\nAtenciosamente,\n{empresa}',
+  include_summary: true, include_attendants: true, attach_pdf: true, active: true,
+};
+
+function EmailTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <SmtpCard />
+      <SchedulesCard />
+    </div>
+  );
+}
+
+function SmtpCard() {
+  const [form, setForm] = useState({
+    smtp_host: '', smtp_port: '587', smtp_secure: 'tls', smtp_user: '',
+    smtp_pass: '', smtp_pass_set: '', smtp_from_name: '', smtp_from_email: '',
+  });
+  const [testTo, setTestTo] = useState('');
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api('/admin/settings').then((s) => setForm((p) => ({ ...p, ...s, smtp_pass: '' }))).catch(() => {});
+  }, []);
+
+  const save = async () => {
+    setBusy(true); setMsg(''); setError('');
+    try {
+      const body = {
+        smtp_host: form.smtp_host, smtp_port: form.smtp_port, smtp_secure: form.smtp_secure,
+        smtp_user: form.smtp_user, smtp_from_name: form.smtp_from_name, smtp_from_email: form.smtp_from_email,
+      };
+      if (form.smtp_pass) body.smtp_pass = form.smtp_pass; // em branco = mantém a atual
+      const s = await api('/admin/settings', { method: 'PUT', body });
+      setForm((p) => ({ ...p, ...s, smtp_pass: '' }));
+      setMsg('Configuração SMTP salva.');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const test = async () => {
+    setBusy(true); setMsg(''); setError('');
+    try {
+      await api('/admin/smtp-test', { method: 'POST', body: { to: testTo } });
+      setMsg(`E-mail de teste enviado para ${testTo}. Verifique a caixa de entrada.`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Servidor de e-mail (SMTP)</h2>
+      <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+        Usado para os relatórios automáticos. Ex.: Gmail (smtp.gmail.com, porta 587, TLS, senha de app)
+        ou o SMTP do provedor da clínica.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Input label="Servidor (host)" placeholder="smtp.provedor.com.br" value={form.smtp_host}
+          onChange={(e) => setForm({ ...form, smtp_host: e.target.value })} />
+        <Input label="Porta" type="number" value={form.smtp_port}
+          onChange={(e) => setForm({ ...form, smtp_port: e.target.value })} />
+        <Select label="Segurança" value={form.smtp_secure}
+          onChange={(e) => setForm({ ...form, smtp_secure: e.target.value })}>
+          <option value="tls">STARTTLS (porta 587)</option>
+          <option value="ssl">SSL (porta 465)</option>
+          <option value="none">Sem criptografia (rede interna)</option>
+        </Select>
+        <Input label="Usuário" value={form.smtp_user}
+          onChange={(e) => setForm({ ...form, smtp_user: e.target.value })} />
+        <Input
+          label={form.smtp_pass_set ? 'Senha (definida — deixe em branco para manter)' : 'Senha'}
+          type="password" value={form.smtp_pass}
+          onChange={(e) => setForm({ ...form, smtp_pass: e.target.value })} />
+        <Input label="Nome do remetente" placeholder="Clínica — Senhas" value={form.smtp_from_name}
+          onChange={(e) => setForm({ ...form, smtp_from_name: e.target.value })} />
+        <Input label="E-mail do remetente" placeholder="nao-responda@clinica.com.br" value={form.smtp_from_email}
+          onChange={(e) => setForm({ ...form, smtp_from_email: e.target.value })} />
+      </div>
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <Button onClick={save} disabled={busy}>Salvar SMTP</Button>
+        <div className="ml-auto flex items-end gap-2">
+          <Input label="Enviar teste para" type="email" placeholder="voce@email.com" value={testTo}
+            onChange={(e) => setTestTo(e.target.value)} />
+          <Button variant="secondary" onClick={test} disabled={busy || !testTo}>✉️ Testar envio</Button>
+        </div>
+      </div>
+      {msg && <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{msg}</p>}
+      {error && <p className="mt-3 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+    </Card>
+  );
+}
+
+function ScheduleForm({ initial, onSave, onCancel, busy }) {
+  const [f, setF] = useState(initial);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Input label="Nome do agendamento" placeholder="Ex.: Relatório mensal — gestão" value={f.name}
+          onChange={(e) => set('name', e.target.value)} />
+        <Input label="Destinatários (separe por vírgula)" placeholder="gestor@clinica.com, diretoria@clinica.com"
+          value={f.recipients} onChange={(e) => set('recipients', e.target.value)} />
+        <Select label="Periodicidade" value={f.frequency} onChange={(e) => set('frequency', e.target.value)}>
+          <option value="daily">Diário (dados do dia anterior)</option>
+          <option value="weekly">Semanal (últimos 7 dias)</option>
+          <option value="monthly">Mensal (mês anterior)</option>
+        </Select>
+        <Input label="Horário do envio" type="time" value={f.send_time}
+          onChange={(e) => set('send_time', e.target.value)} />
+        {f.frequency === 'weekly' && (
+          <Select label="Dia da semana" value={f.weekday} onChange={(e) => set('weekday', Number(e.target.value))}>
+            {WEEKDAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+          </Select>
+        )}
+        {f.frequency === 'monthly' && (
+          <Input label="Dia do mês (1 a 28)" type="number" min={1} max={28} value={f.monthday}
+            onChange={(e) => set('monthday', Number(e.target.value))} />
+        )}
+      </div>
+
+      <Input label="Assunto do e-mail" value={f.subject} onChange={(e) => set('subject', e.target.value)} />
+
+      <label className="block">
+        <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+          Corpo do e-mail (editável)
+        </span>
+        <textarea
+          rows={6}
+          value={f.body}
+          onChange={(e) => set('body', e.target.value)}
+          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+        />
+        <span className="mt-1 block text-xs text-slate-400 dark:text-slate-500">
+          Variáveis disponíveis: {'{empresa} {periodo} {total} {atendidas} {nao_compareceu} {canceladas} {espera_media} {atendimento_medio} {tempo_total}'}
+        </span>
+      </label>
+
+      <div className="flex flex-wrap gap-4 text-sm text-slate-700 dark:text-slate-200">
+        {[
+          ['include_summary', 'Incluir resumo do período no corpo'],
+          ['include_attendants', 'Incluir performance por atendente'],
+          ['attach_pdf', 'Anexar PDF detalhado'],
+          ['active', 'Agendamento ativo'],
+        ].map(([k, label]) => (
+          <label key={k} className="flex cursor-pointer items-center gap-2">
+            <input type="checkbox" className="h-4 w-4 accent-[var(--brand)]" checked={!!f[k]}
+              onChange={(e) => set(k, e.target.checked)} />
+            {label}
+          </label>
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        <Button onClick={() => onSave(f)} disabled={busy}>{busy ? 'Salvando…' : 'Salvar agendamento'}</Button>
+        {onCancel && <Button variant="secondary" onClick={onCancel}>Cancelar</Button>}
+      </div>
+    </div>
+  );
+}
+
+function SchedulesCard() {
+  const { items, error, setError, load } = useCrud('/admin/email-schedules');
+  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const act = async (fn) => {
+    setBusy(true); setMsg(''); setError('');
+    try {
+      await fn();
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const create = (f) => act(async () => {
+    await api('/admin/email-schedules', { method: 'POST', body: f });
+    setCreating(false);
+  });
+  const update = (id, f) => act(async () => {
+    await api(`/admin/email-schedules/${id}`, { method: 'PUT', body: f });
+    setEditingId(null);
+  });
+  const remove = (s) => {
+    if (!confirm(`Excluir o agendamento "${s.name}"?`)) return;
+    act(() => api(`/admin/email-schedules/${s.id}`, { method: 'DELETE' }));
+  };
+  const sendNow = (s) => act(async () => {
+    await api(`/admin/email-schedules/${s.id}/send-now`, { method: 'POST' });
+    setMsg(`"${s.name}" enviado agora para ${s.recipients}.`);
+  });
+
+  const when = (s) =>
+    s.frequency === 'daily' ? `Diário às ${s.send_time}`
+    : s.frequency === 'weekly' ? `${WEEKDAYS[s.weekday]}s às ${s.send_time}`
+    : `Todo dia ${s.monthday} às ${s.send_time}`;
+
+  return (
+    <Card>
+      <div className="mb-1 flex items-center justify-between">
+        <h2 className="font-semibold text-slate-900 dark:text-white">Relatórios automáticos por e-mail</h2>
+        {!creating && <Button onClick={() => { setCreating(true); setEditingId(null); }}>➕ Novo agendamento</Button>}
+      </div>
+      <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+        O servidor dispara sozinho no horário definido: diário envia os dados do dia anterior,
+        semanal os últimos 7 dias e mensal o mês anterior fechado.
+      </p>
+
+      {creating && (
+        <div className="mb-6 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+          <ScheduleForm initial={EMPTY_SCHEDULE} onSave={create} onCancel={() => setCreating(false)} busy={busy} />
+        </div>
+      )}
+
+      <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
+        {items.map((s) =>
+          editingId === s.id ? (
+            <div key={s.id} className="py-4">
+              <ScheduleForm initial={s} onSave={(f) => update(s.id, f)} onCancel={() => setEditingId(null)} busy={busy} />
+            </div>
+          ) : (
+            <div key={s.id} className="flex flex-wrap items-center gap-3 py-3">
+              <div className="min-w-0 flex-1">
+                <div className={`font-medium ${s.active ? 'text-slate-900 dark:text-white' : 'text-slate-400 line-through'}`}>
+                  {s.name}
+                  <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {FREQ_LABEL[s.frequency]}
+                  </span>
+                </div>
+                <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                  {when(s)} · para {s.recipients}
+                </div>
+                <div className="text-xs text-slate-400 dark:text-slate-500">
+                  {s.last_sent_at
+                    ? `Último envio: ${new Date(s.last_sent_at).toLocaleString('pt-BR')} — ${s.last_status || ''}`
+                    : 'Nunca enviado'}
+                </div>
+              </div>
+              <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={busy} onClick={() => sendNow(s)}>
+                📤 Enviar agora
+              </Button>
+              <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => { setEditingId(s.id); setCreating(false); }}>
+                ✏️ Editar
+              </Button>
+              <Button variant="danger" className="px-3 py-1.5 text-xs" onClick={() => remove(s)}>
+                Excluir
+              </Button>
+            </div>
+          )
+        )}
+        {items.length === 0 && !creating && (
+          <p className="py-6 text-sm text-slate-400 dark:text-slate-500">
+            Nenhum agendamento. Clique em "Novo agendamento" para criar, por exemplo, um relatório
+            mensal para a gestão.
+          </p>
+        )}
+      </div>
+      {msg && <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{msg}</p>}
+      {error && <p className="mt-3 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+    </Card>
   );
 }
 
