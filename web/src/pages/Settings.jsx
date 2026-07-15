@@ -1352,6 +1352,28 @@ function PermissionPicker({ value, onChange, disabled }) {
   );
 }
 
+// Seletor de perfil de acesso: aplica um conjunto pronto de permissões
+function ProfilePicker({ profiles, permissions, onApply }) {
+  // Detecta se as permissões atuais batem exatamente com algum perfil
+  const same = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+  const current = profiles.find((p) => same(p.permissions, permissions));
+  return (
+    <Select
+      label="Perfil de acesso (aplica um conjunto de permissões)"
+      value={current ? current.id : ''}
+      onChange={(e) => {
+        const p = profiles.find((x) => String(x.id) === e.target.value);
+        if (p) onApply(p.permissions);
+      }}
+    >
+      <option value="">Personalizado</option>
+      {profiles.map((p) => (
+        <option key={p.id} value={p.id}>{p.name}</option>
+      ))}
+    </Select>
+  );
+}
+
 // Seletor de especialidade — aparece quando o usuário tem permissão de médico
 function SpecialtyPicker({ specialties, value, onChange }) {
   return (
@@ -1364,16 +1386,114 @@ function SpecialtyPicker({ specialties, value, onChange }) {
   );
 }
 
+// Gestão dos perfis de acesso (conjuntos de permissões reutilizáveis)
+function AccessProfiles({ onChange }) {
+  const { items, error, setError, load } = useCrud('/admin/access-profiles?all=1');
+  const [form, setForm] = useState({ name: '', permissions: [] });
+
+  const reload = () => { load(); onChange?.(); };
+
+  const create = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await api('/admin/access-profiles', { method: 'POST', body: form });
+      setForm({ name: '', permissions: [] });
+      reload();
+    } catch (e2) {
+      setError(e2.message);
+    }
+  };
+
+  return (
+    <Card>
+      <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Perfis de acesso</h2>
+      <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+        Conjuntos de permissões prontos para agilizar o cadastro de usuários (ex.: Recepção, Médico, Gestão)
+      </p>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <form onSubmit={create} className="flex flex-col gap-3">
+          <Input label="Nome do perfil" placeholder="Ex.: Coordenação" value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          <PermissionPicker value={form.permissions}
+            onChange={(permissions) => setForm({ ...form, permissions })} />
+          {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+          <Button type="submit">Criar perfil</Button>
+        </form>
+        <div className="lg:col-span-2">
+          <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
+            {items.map((p) => (
+              <ProfileRow key={p.id} profile={p} onSaved={reload} />
+            ))}
+            {items.length === 0 && <p className="py-4 text-sm text-slate-400 dark:text-slate-500">Nenhum perfil cadastrado</p>}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ProfileRow({ profile: p, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ name: p.name, permissions: p.permissions || [] });
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    setError('');
+    try {
+      await api(`/admin/access-profiles/${p.id}`, { method: 'PUT', body: form });
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const remove = async () => {
+    if (!confirm(`Excluir o perfil "${p.name}"? Usuários já criados com ele não são afetados.`)) return;
+    await api(`/admin/access-profiles/${p.id}`, { method: 'DELETE' });
+    onSaved();
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-3 py-4">
+        <Input label="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <PermissionPicker value={form.permissions} onChange={(permissions) => setForm({ ...form, permissions })} />
+        {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+        <div className="flex gap-2">
+          <Button onClick={save}>Salvar</Button>
+          <Button variant="secondary" onClick={() => { setEditing(false); setForm({ name: p.name, permissions: p.permissions || [] }); setError(''); }}>Cancelar</Button>
+        </div>
+      </div>
+    );
+  }
+
+  const labels = PERM_OPTIONS.filter(([perm]) => p.permissions.includes(perm)).map(([, l]) => l.split(' (')[0]);
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <div className="flex-1">
+        <div className={`font-medium ${p.active ? 'text-slate-900 dark:text-white' : 'text-slate-400 line-through'}`}>{p.name}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">{labels.length ? labels.join(', ') : 'sem telas'}</div>
+      </div>
+      <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => setEditing(true)}>✏️ Editar</Button>
+      <Button variant="danger" className="px-3 py-1 text-xs" onClick={remove}>Excluir</Button>
+    </div>
+  );
+}
+
 function Users() {
   const { items, error, setError, load } = useCrud('/admin/users');
   const [specialties, setSpecialties] = useState([]);
+  const [profiles, setProfiles] = useState([]);
   const [form, setForm] = useState({
     name: '', username: '', password: '', role: 'attendant',
     permissions: ['atendimento', 'senhas'], specialty_id: '',
   });
 
+  const loadProfiles = () => api('/admin/access-profiles').then(setProfiles).catch(() => {});
   useEffect(() => {
     api('/admin/specialties?all=1').then(setSpecialties).catch(() => {});
+    loadProfiles();
   }, []);
 
   const create = async (e) => {
@@ -1391,47 +1511,55 @@ function Users() {
   const isDoctor = form.permissions.includes('medico');
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <Card>
-        <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Novo usuário</h2>
-        <form onSubmit={create} className="flex flex-col gap-3">
-          <Input label="Nome completo" value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          <Input label="Usuário (login)" value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })} required />
-          <Input label="Senha" type="password" minLength={6} value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-          <Select label="Perfil" value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}>
-            <option value="attendant">Atendente</option>
-            <option value="admin">Superusuário</option>
-          </Select>
-          <PermissionPicker
-            value={form.permissions}
-            disabled={form.role === 'admin'}
-            onChange={(permissions) => setForm({ ...form, permissions })}
-          />
-          {isDoctor && form.role !== 'admin' && (
-            <SpecialtyPicker specialties={specialties} value={form.specialty_id}
-              onChange={(specialty_id) => setForm({ ...form, specialty_id })} />
-          )}
-          {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
-          <Button type="submit">Criar usuário</Button>
-        </form>
-      </Card>
-      <Card className="lg:col-span-2">
-        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Usuários cadastrados</h2>
-        <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
-          O login (usuário) não muda após a criação; nome, perfil e senha podem ser editados
-        </p>
-        <UsersList items={items} specialties={specialties} onSaved={load} />
-      </Card>
+    <div className="flex flex-col gap-6">
+      <AccessProfiles onChange={loadProfiles} />
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card>
+          <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Novo usuário</h2>
+          <form onSubmit={create} className="flex flex-col gap-3">
+            <Input label="Nome completo" value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            <Input label="Usuário (login)" value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })} required />
+            <Input label="Senha" type="password" minLength={6} value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+            <Select label="Perfil" value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}>
+              <option value="attendant">Atendente</option>
+              <option value="admin">Superusuário</option>
+            </Select>
+            {form.role !== 'admin' && profiles.length > 0 && (
+              <ProfilePicker profiles={profiles} permissions={form.permissions}
+                onApply={(permissions) => setForm({ ...form, permissions })} />
+            )}
+            <PermissionPicker
+              value={form.permissions}
+              disabled={form.role === 'admin'}
+              onChange={(permissions) => setForm({ ...form, permissions })}
+            />
+            {isDoctor && form.role !== 'admin' && (
+              <SpecialtyPicker specialties={specialties} value={form.specialty_id}
+                onChange={(specialty_id) => setForm({ ...form, specialty_id })} />
+            )}
+            {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+            <Button type="submit">Criar usuário</Button>
+          </form>
+        </Card>
+        <Card className="lg:col-span-2">
+          <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Usuários cadastrados</h2>
+          <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
+            O login (usuário) não muda após a criação; nome, perfil e senha podem ser editados
+          </p>
+          <UsersList items={items} specialties={specialties} profiles={profiles} onSaved={load} />
+        </Card>
+      </div>
     </div>
   );
 }
 
 // Lista de usuários com filtro por tipo de login e contagem por grupo
-function UsersList({ items, specialties, onSaved }) {
+function UsersList({ items, specialties, profiles, onSaved }) {
   const [filter, setFilter] = useState('Todos');
   const counts = items.reduce((acc, u) => {
     const t = userType(u);
@@ -1460,7 +1588,7 @@ function UsersList({ items, specialties, onSaved }) {
       </div>
       <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
         {shown.map((u) => (
-          <UserRow key={u.id} user={u} specialties={specialties} onSaved={onSaved} />
+          <UserRow key={u.id} user={u} specialties={specialties} profiles={profiles} onSaved={onSaved} />
         ))}
         {shown.length === 0 && (
           <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">Nenhum usuário deste tipo</p>
@@ -1470,7 +1598,7 @@ function UsersList({ items, specialties, onSaved }) {
   );
 }
 
-function UserRow({ user: u, specialties, onSaved }) {
+function UserRow({ user: u, specialties, profiles = [], onSaved }) {
   const me = getUser();
   const isSelf = me?.id === u.id;
   const [editing, setEditing] = useState(false);
@@ -1524,6 +1652,10 @@ function UserRow({ user: u, specialties, onSaved }) {
           <Input label="Nova senha (deixe vazio para manter)" type="password" minLength={6} value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })} />
         </div>
+        {form.role !== 'admin' && profiles.length > 0 && (
+          <ProfilePicker profiles={profiles} permissions={form.permissions}
+            onApply={(permissions) => setForm({ ...form, permissions })} />
+        )}
         <PermissionPicker
           value={form.permissions}
           disabled={form.role === 'admin'}

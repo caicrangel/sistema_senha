@@ -246,6 +246,60 @@ export default function adminRoutes(io) {
     }
   });
 
+  // ------- Perfis de acesso -------
+  router.get('/access-profiles', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const all = req.query.all === '1';
+      const { rows } = await query(
+        `SELECT * FROM access_profiles ${all ? '' : 'WHERE active = TRUE'} ORDER BY id`
+      );
+      res.json(rows.map((p) => ({ ...p, permissions: parsePermissions(p.permissions) })));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.post('/access-profiles', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const { name, permissions } = req.body || {};
+      if (!name?.trim()) return res.status(400).json({ error: 'Nome do perfil é obrigatório' });
+      const { rows } = await query(
+        'INSERT INTO access_profiles (name, permissions) VALUES ($1, $2) RETURNING *',
+        [name.trim(), clean(permissions)]
+      );
+      res.status(201).json({ ...rows[0], permissions: parsePermissions(rows[0].permissions) });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.put('/access-profiles/:id', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const { name, permissions, active } = req.body || {};
+      const { rows } = await query(
+        `UPDATE access_profiles SET
+           name = COALESCE($1, name),
+           permissions = COALESCE($2, permissions),
+           active = COALESCE($3, active)
+         WHERE id = $4 RETURNING *`,
+        [name?.trim(), permissions !== undefined ? clean(permissions) : null, active, req.params.id]
+      );
+      if (!rows[0]) return res.status(404).json({ error: 'Perfil não encontrado' });
+      res.json({ ...rows[0], permissions: parsePermissions(rows[0].permissions) });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.delete('/access-profiles/:id', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      await query('DELETE FROM access_profiles WHERE id = $1', [req.params.id]);
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   // ------- Usuários -------
   router.get('/users', requireAuth, requireAdmin, async (_req, res, next) => {
     try {

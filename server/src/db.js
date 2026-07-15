@@ -99,6 +99,14 @@ ALTER TABLE tickets ADD COLUMN IF NOT EXISTS med_started_at TIMESTAMPTZ;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS specialty_id INT REFERENCES specialties(id);
 
+-- Perfis de acesso: conjuntos nomeados de permissões, reutilizáveis ao criar usuários
+CREATE TABLE IF NOT EXISTS access_profiles (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  permissions TEXT NOT NULL DEFAULT '[]',
+  active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
 CREATE TABLE IF NOT EXISTS email_schedules (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -152,6 +160,16 @@ export async function seed(bcrypt) {
   const { rows: rm } = await query('SELECT COUNT(*)::int AS n FROM rooms');
   if (rm[0].n === 0) {
     await query(`INSERT INTO rooms (name) VALUES ('Consultório 1'), ('Consultório 2')`);
+  }
+  const { rows: ap } = await query('SELECT COUNT(*)::int AS n FROM access_profiles');
+  if (ap[0].n === 0) {
+    await query(
+      `INSERT INTO access_profiles (name, permissions) VALUES
+       ('Recepção', '["atendimento","senhas"]'),
+       ('Médico', '["medico"]'),
+       ('Gestão', '["dashboard","relatorios"]'),
+       ('Recepção + Gestão', '["atendimento","senhas","dashboard","relatorios"]')`
+    );
   }
   await query(
     `INSERT INTO settings (key, value) VALUES
