@@ -3,10 +3,16 @@ import { api, getToken } from '../lib/api.js';
 import { Card, PageTitle, Button, Input, StatusBadge } from '../components/ui.jsx';
 import { StatTile, BarChart, HBarChart } from '../components/charts.jsx';
 
-const today = () => new Date().toISOString().slice(0, 10);
-const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+// Datas no fuso local do usuário (não em UTC — à noite a data UTC já virou)
+const localDate = (d) => d.toLocaleDateString('en-CA');
+const today = () => localDate(new Date());
+const daysAgo = (n) => localDate(new Date(Date.now() - n * 86400000));
 
 const fmt = (d) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+
+// Formata minutos como "2h 15min" / "45 min"
+const fmtMin = (m) =>
+  m == null ? '—' : m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}min` : `${m} min`;
 
 export default function Reports() {
   const [from, setFrom] = useState(daysAgo(6));
@@ -83,11 +89,13 @@ export default function Reports() {
         </div>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatTile label="Total de senhas" value={t.total} accent="#2a78d6" />
         <StatTile label="Atendidas" value={t.done} accent="#1baf7a" />
         <StatTile label="Espera média" value={t.avg_wait_min != null ? `${t.avg_wait_min} min` : '—'} accent="#2a78d6" />
         <StatTile label="Atendimento médio" value={t.avg_service_min != null ? `${t.avg_service_min} min` : '—'} accent="#1baf7a" />
+        <StatTile label="Tempo total de atendimento" value={fmtMin(t.total_service_min)}
+          hint="Soma das senhas concluídas" accent="#4a3aa7" />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -109,6 +117,40 @@ export default function Reports() {
       </div>
 
       <Card className="mt-6 overflow-x-auto p-0">
+        <div className="px-5 py-4">
+          <h2 className="font-semibold text-slate-900 dark:text-white">Atendimento por colaborador</h2>
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            Tempo contado da chamada até a finalização das senhas concluídas
+          </p>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-y border-slate-200 dark:border-slate-700 text-left text-xs uppercase tracking-wide text-slate-500">
+              <th className="px-5 py-3">Atendente</th>
+              <th className="px-5 py-3">Senhas chamadas</th>
+              <th className="px-5 py-3">Concluídas</th>
+              <th className="px-5 py-3">Tempo total de atendimento</th>
+              <th className="px-5 py-3">Tempo médio</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            {(summary?.byAttendant || []).map((a) => (
+              <tr key={a.name} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td className="px-5 py-3 font-medium text-slate-900 dark:text-white">{a.name}</td>
+                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{a.total}</td>
+                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{a.done}</td>
+                <td className="px-5 py-3 font-semibold tabular-nums text-slate-900 dark:text-white">{fmtMin(a.total_service_min)}</td>
+                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmtMin(a.avg_service_min)}</td>
+              </tr>
+            ))}
+            {(summary?.byAttendant || []).length === 0 && (
+              <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-400 dark:text-slate-500">Sem atendimentos no período</td></tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card className="mt-6 overflow-x-auto p-0">
         <div className="flex items-center justify-between px-5 py-4">
           <h2 className="font-semibold text-slate-900 dark:text-white">Detalhamento {loading && '· carregando…'}</h2>
           <span className="text-sm text-slate-500 dark:text-slate-400">{rows.length} registros</span>
@@ -124,6 +166,7 @@ export default function Reports() {
               <th className="px-5 py-3">Atendente</th>
               <th className="px-5 py-3">Emitida</th>
               <th className="px-5 py-3">Finalizada</th>
+              <th className="px-5 py-3">Duração</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -137,10 +180,13 @@ export default function Reports() {
                 <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{r.attendant_name || '—'}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmt(r.created_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmt(r.finished_at)}</td>
+                <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
+                  {r.status === 'done' ? fmtMin(r.service_min) : '—'}
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={8} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">Sem registros no período</td></tr>
+              <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">Sem registros no período</td></tr>
             )}
           </tbody>
         </table>

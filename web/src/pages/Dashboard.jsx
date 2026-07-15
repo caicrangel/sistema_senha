@@ -4,7 +4,11 @@ import { getSocket } from '../lib/socket.js';
 import { Card, PageTitle } from '../components/ui.jsx';
 import { StatTile, BarChart, HBarChart } from '../components/charts.jsx';
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Data de hoje no fuso local (não em UTC)
+const today = () => new Date().toLocaleDateString('en-CA');
+
+const fmtMin = (m) =>
+  m == null ? null : m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}min` : `${m} min`;
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
@@ -73,7 +77,7 @@ export default function Dashboard() {
           <h2 className="mb-6 font-semibold text-slate-900 dark:text-white">Atendimentos por atendente</h2>
           <HBarChart
             data={(data?.byAttendant || []).map((x) => ({
-              label: `${x.name}${x.avg_service_min != null ? ` · média ${x.avg_service_min} min` : ''}`,
+              label: `${x.name}${x.total_service_min != null ? ` · total ${fmtMin(x.total_service_min)}` : ''}${x.avg_service_min != null ? ` · média ${x.avg_service_min} min` : ''}`,
               value: x.total,
             }))}
           />

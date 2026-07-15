@@ -1,6 +1,10 @@
 import pg from 'pg';
 
-export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  // Mantém CURRENT_DATE e casts ::date no fuso da clínica (não em UTC)
+  options: `-c TimeZone=${process.env.TZ || 'America/Sao_Paulo'}`,
+});
 
 export const query = (text, params) => pool.query(text, params);
 

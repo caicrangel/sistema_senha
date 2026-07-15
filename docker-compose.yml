@@ -7,6 +7,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-senhas}
       POSTGRES_USER: ${POSTGRES_USER:-senhas}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-senhas_local_pw}
+      TZ: ${TZ:-America/Sao_Paulo}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -26,6 +27,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-troque_este_segredo_em_producao}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      TZ: ${TZ:-America/Sao_Paulo}
       PORT: 3000
     depends_on:
       db:
