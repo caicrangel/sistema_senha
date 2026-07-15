@@ -25,22 +25,33 @@ export const fmtDur = (sec) => {
 
 export async function fetchRows(from, to) {
   const { rows } = await query(
-    `SELECT t.code, t.customer_name, st.name AS service_name, t.status,
+    `SELECT t.code, t.customer_name, st.name AS service_name, t.status, t.stage,
             c.name AS counter_name, u.name AS attendant_name,
-            t.created_at, t.called_at, t.finished_at,
+            r.name AS room_name, d.name AS doctor_name, sp.name AS specialty_name,
+            t.created_at, t.called_at, t.forwarded_at, t.med_called_at, t.finished_at,
             EXTRACT(EPOCH FROM (t.called_at - t.created_at))::int AS wait_sec,
-            EXTRACT(EPOCH FROM (t.finished_at - t.called_at))::int AS service_sec,
-            EXTRACT(EPOCH FROM (t.finished_at - t.created_at))::int AS total_sec,
-            ROUND(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)) / 60)::int AS service_min
+            EXTRACT(EPOCH FROM (COALESCE(t.forwarded_at, t.finished_at) - t.called_at))::int AS service_sec,
+            EXTRACT(EPOCH FROM (t.med_called_at - t.forwarded_at))::int AS med_wait_sec,
+            EXTRACT(EPOCH FROM (t.finished_at - t.med_called_at))::int AS med_service_sec,
+            EXTRACT(EPOCH FROM (t.finished_at - t.created_at))::int AS total_sec
      FROM tickets t
      JOIN service_types st ON st.id = t.service_type_id
      LEFT JOIN counters c ON c.id = t.counter_id
      LEFT JOIN users u ON u.id = t.attendant_id
+     LEFT JOIN rooms r ON r.id = t.room_id
+     LEFT JOIN users d ON d.id = t.doctor_id
+     LEFT JOIN specialties sp ON sp.id = t.specialty_id
      WHERE t.created_at::date BETWEEN $1 AND $2
      ORDER BY t.created_at DESC`,
     [from, to]
   );
   return rows;
+}
+
+// Descobre se o fluxo médico está habilitado (para incluir as colunas do médico)
+export async function isMedicalOn() {
+  const { rows } = await query(`SELECT value FROM settings WHERE key = 'flow_medical'`);
+  return rows[0]?.value === '1';
 }
 
 async function getBranding() {
@@ -64,6 +75,7 @@ const periodLabel = (from, to) => {
 export async function buildXlsx({ from, to, user }) {
   const rows = await fetchRows(from, to);
   const { company_name } = await getBranding();
+  const medical = await isMedicalOn();
 
   const wb = new ExcelJS.Workbook();
   wb.creator = user?.name || 'Sistema de Senhas';
@@ -78,9 +90,15 @@ export async function buildXlsx({ from, to, user }) {
   ws.getRow(2).font = { bold: true, size: 12 };
 
   const header = [
-    'Senha', 'Nome', 'Tipo de Atendimento', 'Status', 'Guichê', 'Atendente',
+    'Senha', 'Nome', 'Tipo de Atendimento', 'Status',
+    medical ? 'Destino' : 'Guichê', 'Atendente',
+    ...(medical ? ['Médico'] : []),
     'Data Emissão', 'Hora Emissão', 'Data Chamada', 'Hora Chamada',
-    'Data Finalização', 'Hora Finalização', 'Espera', 'Atendimento', 'Total',
+    'Data Finalização', 'Hora Finalização',
+    medical ? 'Espera Recepção' : 'Espera',
+    medical ? 'Atend. Recepção' : 'Atendimento',
+    ...(medical ? ['Espera Médico', 'Consulta'] : []),
+    'Total',
   ];
   const headerRow = ws.addRow(header);
   headerRow.font = { bold: true };
@@ -89,51 +107,67 @@ export async function buildXlsx({ from, to, user }) {
     cell.border = { bottom: { style: 'thin' } };
   });
 
+  const dest = (r) =>
+    r.stage === 'medical'
+      ? [r.room_name || 'Consultório', r.doctor_name].filter(Boolean).join(' · ')
+      : r.counter_name || '';
+
   for (const r of rows) {
     ws.addRow([
       r.code,
       r.customer_name || '',
       r.service_name,
       STATUS_PT[r.status] || r.status,
-      r.counter_name || '',
+      medical ? dest(r) : (r.counter_name || ''),
       r.attendant_name || '',
+      ...(medical ? [r.doctor_name || ''] : []),
       dPt(r.created_at), hPt(r.created_at),
       dPt(r.called_at), hPt(r.called_at),
       dPt(r.finished_at), hPt(r.finished_at),
       r.called_at ? fmtDur(r.wait_sec) : '',
-      r.status === 'done' ? fmtDur(r.service_sec) : '',
+      r.service_sec != null ? fmtDur(r.service_sec) : '',
+      ...(medical ? [
+        r.med_wait_sec != null ? fmtDur(r.med_wait_sec) : '',
+        r.status === 'done' && r.med_service_sec != null ? fmtDur(r.med_service_sec) : '',
+      ] : []),
       r.status === 'done' ? fmtDur(r.total_sec) : '',
     ]);
   }
 
-  ws.columns.forEach((col, i) => {
-    col.width = [10, 24, 24, 16, 12, 20, 13, 12, 13, 12, 15, 15, 12, 13, 12][i] || 14;
-  });
+  ws.columns.forEach((col) => { col.width = 15; });
+  ws.getColumn(2).width = 24;
+  ws.getColumn(3).width = 24;
 
   return wb.xlsx.writeBuffer();
 }
 
 // ---------------------------------------------------------------- PDF
 
-const PDF_COLS = [
-  ['Senha', 40],
-  ['Nome', 84],
-  ['Tipo', 78],
-  ['Status', 64],
-  ['Guichê', 46],
-  ['Atendente', 76],
-  ['Dt. Emissão', 52],
-  ['Hora', 44],
-  ['Dt. Final.', 52],
-  ['Hora', 44],
-  ['Espera', 48],
-  ['Atendim.', 48],
-  ['Total', 48],
-];
+// Colunas do PDF conforme o fluxo médico (mais colunas de tempo quando ligado)
+const pdfCols = (medical) =>
+  medical
+    ? [
+        ['Senha', 34], ['Nome', 68], ['Tipo', 56], ['Status', 54],
+        ['Destino', 78], ['Médico', 60],
+        ['Emissão', 62], ['Final.', 62],
+        ['Esp.Rec', 42], ['At.Rec', 42], ['Esp.Méd', 42], ['Consulta', 44], ['Total', 44],
+      ]
+    : [
+        ['Senha', 40], ['Nome', 84], ['Tipo', 78], ['Status', 64],
+        ['Guichê', 46], ['Atendente', 76],
+        ['Dt. Emissão', 52], ['Hora', 44], ['Dt. Final.', 52], ['Hora', 44],
+        ['Espera', 48], ['Atendim.', 48], ['Total', 48],
+      ];
 
 export async function buildPdf({ from, to, user }) {
   const rows = await fetchRows(from, to);
   const { company_name, logo } = await getBranding();
+  const medical = await isMedicalOn();
+  const PDF_COLS = pdfCols(medical);
+  const dest = (r) =>
+    r.stage === 'medical'
+      ? [r.room_name || 'Consultório', r.doctor_name].filter(Boolean).join(' · ')
+      : r.counter_name || '—';
 
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30 });
   const chunks = [];
@@ -188,19 +222,35 @@ export async function buildPdf({ from, to, user }) {
       y = drawTableHead(y);
       doc.font('Helvetica').fontSize(7).fillColor('#222');
     }
-    const cells = [
-      r.code,
-      r.customer_name || '—',
-      r.service_name,
-      STATUS_PT[r.status] || r.status,
-      r.counter_name || '—',
-      r.attendant_name || '—',
-      dPt(r.created_at), hPt(r.created_at),
-      dPt(r.finished_at) || '—', hPt(r.finished_at) || '—',
-      r.called_at ? fmtDur(r.wait_sec) : '—',
-      r.status === 'done' ? fmtDur(r.service_sec) : '—',
-      r.status === 'done' ? fmtDur(r.total_sec) : '—',
-    ];
+    const cells = medical
+      ? [
+          r.code,
+          r.customer_name || '—',
+          r.service_name,
+          STATUS_PT[r.status] || r.status,
+          dest(r),
+          r.doctor_name || '—',
+          `${dPt(r.created_at)} ${hPt(r.created_at)}`,
+          r.finished_at ? `${dPt(r.finished_at)} ${hPt(r.finished_at)}` : '—',
+          r.called_at ? fmtDur(r.wait_sec) : '—',
+          r.service_sec != null ? fmtDur(r.service_sec) : '—',
+          r.med_wait_sec != null ? fmtDur(r.med_wait_sec) : '—',
+          r.status === 'done' && r.med_service_sec != null ? fmtDur(r.med_service_sec) : '—',
+          r.status === 'done' ? fmtDur(r.total_sec) : '—',
+        ]
+      : [
+          r.code,
+          r.customer_name || '—',
+          r.service_name,
+          STATUS_PT[r.status] || r.status,
+          r.counter_name || '—',
+          r.attendant_name || '—',
+          dPt(r.created_at), hPt(r.created_at),
+          dPt(r.finished_at) || '—', hPt(r.finished_at) || '—',
+          r.called_at ? fmtDur(r.wait_sec) : '—',
+          r.status === 'done' ? fmtDur(r.service_sec) : '—',
+          r.status === 'done' ? fmtDur(r.total_sec) : '—',
+        ];
     let x = left;
     cells.forEach((val, i) => {
       doc.text(String(val), x, y, { width: PDF_COLS[i][1] - 4, height: 10, ellipsis: true, lineBreak: false });

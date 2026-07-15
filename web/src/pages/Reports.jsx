@@ -230,39 +230,58 @@ export default function Reports() {
               <th className="px-5 py-3">Nome</th>
               <th className="px-5 py-3">Tipo</th>
               <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3">Guichê</th>
+              <th className="px-5 py-3">{medicalOn ? 'Destino' : 'Guichê'}</th>
               <th className="px-5 py-3">Atendente</th>
+              {medicalOn && <th className="px-5 py-3">Médico</th>}
               <th className="px-5 py-3">Emitida</th>
               <th className="px-5 py-3">Finalizada</th>
-              <th className="px-5 py-3">Espera</th>
-              <th className="px-5 py-3">Atendimento</th>
+              <th className="px-5 py-3">{medicalOn ? 'Espera recep.' : 'Espera'}</th>
+              <th className="px-5 py-3">{medicalOn ? 'Atend. recep.' : 'Atendimento'}</th>
+              {medicalOn && <th className="px-5 py-3">Espera médico</th>}
+              {medicalOn && <th className="px-5 py-3">Consulta</th>}
               <th className="px-5 py-3">Total</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {rows.map((r, i) => (
+            {rows.map((r, i) => {
+              const dest = r.stage === 'medical'
+                ? [r.room_name || 'Consultório', r.doctor_name].filter(Boolean).join(' · ')
+                : (r.counter_name || '—');
+              return (
               <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                 <td className="px-5 py-3 font-bold text-slate-900 dark:text-white">{r.code}</td>
                 <td className="px-5 py-3 text-slate-900 dark:text-white">{r.customer_name || '—'}</td>
                 <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{r.service_name}</td>
                 <td className="px-5 py-3"><StatusBadge status={r.status} /></td>
-                <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{r.counter_name || '—'}</td>
+                <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{medicalOn ? dest : (r.counter_name || '—')}</td>
                 <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{r.attendant_name || '—'}</td>
+                {medicalOn && <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{r.doctor_name || '—'}</td>}
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmt(r.created_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{fmt(r.finished_at)}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
                   {r.called_at ? fmtDurSec(r.wait_sec) : '—'}
                 </td>
                 <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
-                  {r.status === 'done' ? fmtDurSec(r.service_sec) : '—'}
+                  {r.service_sec != null ? fmtDurSec(r.service_sec) : '—'}
                 </td>
+                {medicalOn && (
+                  <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
+                    {r.med_wait_sec != null ? fmtDurSec(r.med_wait_sec) : '—'}
+                  </td>
+                )}
+                {medicalOn && (
+                  <td className="px-5 py-3 tabular-nums text-slate-600 dark:text-slate-300">
+                    {r.status === 'done' && r.med_service_sec != null ? fmtDurSec(r.med_service_sec) : '—'}
+                  </td>
+                )}
                 <td className="px-5 py-3 font-semibold tabular-nums text-slate-900 dark:text-white">
                   {r.status === 'done' ? fmtDurSec(r.total_sec) : '—'}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {rows.length === 0 && (
-              <tr><td colSpan={11} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">Sem registros no período</td></tr>
+              <tr><td colSpan={medicalOn ? 14 : 11} className="px-5 py-10 text-center text-slate-400 dark:text-slate-500">Sem registros no período</td></tr>
             )}
           </tbody>
         </table>

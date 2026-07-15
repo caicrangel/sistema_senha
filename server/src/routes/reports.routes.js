@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth, requirePerm } from '../auth.js';
-import { buildPdf, buildXlsx, fetchRows, STATUS_PT, dPt, hPt, fmtDur } from './export.js';
+import { buildPdf, buildXlsx, fetchRows, isMedicalOn, STATUS_PT, dPt, hPt, fmtDur } from './export.js';
 
 const router = Router();
 
@@ -115,20 +115,34 @@ router.get('/tickets', async (req, res, next) => {
     const [from, to] = range(req);
     const rows = await fetchRows(from, to);
     if (req.query.format === 'csv') {
-      const header =
-        'Senha;Nome;Tipo;Status;Guichê;Atendente;Data Emissão;Hora Emissão;Data Chamada;Hora Chamada;Data Finalização;Hora Finalização;Espera;Atendimento;Total';
-      const lines = rows.map((r) =>
-        [r.code, r.customer_name || '', r.service_name, STATUS_PT[r.status] || r.status,
-         r.counter_name || '', r.attendant_name || '',
-         dPt(r.created_at), hPt(r.created_at),
-         dPt(r.called_at), hPt(r.called_at),
-         dPt(r.finished_at), hPt(r.finished_at),
-         r.called_at ? fmtDur(r.wait_sec) : '',
-         r.status === 'done' ? fmtDur(r.service_sec) : '',
-         r.status === 'done' ? fmtDur(r.total_sec) : '']
-          .map((v) => String(v).replaceAll(';', ','))
-          .join(';')
-      );
+      const medical = await isMedicalOn();
+      const dest = (r) =>
+        r.stage === 'medical'
+          ? [r.room_name || 'Consultório', r.doctor_name].filter(Boolean).join(' · ')
+          : r.counter_name || '';
+      const header = medical
+        ? 'Senha;Nome;Tipo;Status;Destino;Atendente;Médico;Data Emissão;Hora Emissão;Data Chamada;Hora Chamada;Data Finalização;Hora Finalização;Espera Recepção;Atend. Recepção;Espera Médico;Consulta;Total'
+        : 'Senha;Nome;Tipo;Status;Guichê;Atendente;Data Emissão;Hora Emissão;Data Chamada;Hora Chamada;Data Finalização;Hora Finalização;Espera;Atendimento;Total';
+      const lines = rows.map((r) => {
+        const base = [r.code, r.customer_name || '', r.service_name, STATUS_PT[r.status] || r.status,
+          medical ? dest(r) : (r.counter_name || ''), r.attendant_name || ''];
+        if (medical) base.push(r.doctor_name || '');
+        base.push(
+          dPt(r.created_at), hPt(r.created_at),
+          dPt(r.called_at), hPt(r.called_at),
+          dPt(r.finished_at), hPt(r.finished_at),
+          r.called_at ? fmtDur(r.wait_sec) : '',
+          r.service_sec != null ? fmtDur(r.service_sec) : ''
+        );
+        if (medical) {
+          base.push(
+            r.med_wait_sec != null ? fmtDur(r.med_wait_sec) : '',
+            r.status === 'done' && r.med_service_sec != null ? fmtDur(r.med_service_sec) : ''
+          );
+        }
+        base.push(r.status === 'done' ? fmtDur(r.total_sec) : '');
+        return base.map((v) => String(v).replaceAll(';', ',')).join(';');
+      });
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename=relatorio_${from}_${to}.csv`);
       return res.send('﻿' + [header, ...lines].join('\n'));

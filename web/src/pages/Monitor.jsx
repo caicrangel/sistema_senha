@@ -96,6 +96,7 @@ export default function Monitor() {
           </button>
           <span className={`text-3xl font-semibold tabular-nums ${subtle}`}>
             {clock.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            <span className="text-xl opacity-70">:{String(clock.getSeconds()).padStart(2, '0')}</span>
           </span>
         </div>
       </header>
@@ -145,21 +146,38 @@ export default function Monitor() {
           </div>
 
           {/* Últimas chamadas */}
-          <h2 className={`mb-3 mt-6 text-xl font-bold ${subtle}`}>Últimas chamadas</h2>
-          <div className="flex flex-col gap-2 overflow-hidden">
+          <h2 className={`mb-3 mt-6 text-xl font-black uppercase tracking-wide ${dark ? 'text-slate-200' : 'text-slate-700'}`}>
+            Últimas chamadas
+          </h2>
+          <div className="flex flex-col gap-3 overflow-hidden">
             {state.lastCalls.map((t) => (
-              <div key={t.id} className={`flex items-center justify-between rounded-2xl px-5 py-3 ${dark ? 'bg-slate-900' : 'bg-white shadow'}`}>
-                <div className="flex items-baseline gap-3 overflow-hidden">
-                  <span className="text-2xl font-black tabular-nums">{t.code}</span>
+              <div
+                key={t.id}
+                className={`flex items-center justify-between gap-4 rounded-2xl border-l-8 px-5 py-4 ${
+                  dark ? 'bg-slate-800/80' : 'bg-white shadow-md'
+                }`}
+                style={{ borderColor: t.color }}
+              >
+                <div className="flex items-center gap-4 overflow-hidden">
+                  <span
+                    className="shrink-0 rounded-xl px-3 py-1 text-3xl font-black tabular-nums text-white"
+                    style={{ backgroundColor: t.color }}
+                  >
+                    {t.code}
+                  </span>
                   {t.customer_name && (
-                    <span className={`truncate text-lg ${subtle}`}>{t.customer_name}</span>
+                    <span className={`truncate text-2xl font-semibold ${dark ? 'text-white' : 'text-slate-800'}`}>
+                      {t.customer_name}
+                    </span>
                   )}
                 </div>
-                <span className="shrink-0 text-lg font-semibold">{t.destination || t.counter_name}</span>
+                <span className={`shrink-0 text-2xl font-bold ${dark ? 'text-amber-400' : 'text-amber-600'}`}>
+                  {t.destination || t.counter_name}
+                </span>
               </div>
             ))}
             {state.lastCalls.length === 0 && (
-              <p className={`text-base ${dark ? 'text-slate-600' : 'text-slate-400'}`}>Nenhuma chamada anterior</p>
+              <p className={`text-lg ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Nenhuma chamada anterior</p>
             )}
           </div>
         </section>
