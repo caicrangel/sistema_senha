@@ -99,7 +99,9 @@ export async function seed(bcrypt) {
      ('brand_color', '#2563eb'),
      ('logo', ''),
      ('totem_theme', 'dark'),
-     ('panel_theme', 'dark')
+     ('panel_theme', 'dark'),
+     ('panel_sound', 'on'),
+     ('panel_last_calls', '5')
      ON CONFLICT (key) DO NOTHING`
   );
 }

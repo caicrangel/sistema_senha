@@ -40,10 +40,12 @@ Acesse `http://<ip-do-servidor>:8080` (porta configurável via `HTTP_PORT` no `.
 
 - **Tipos de atendimento** são configuráveis: nome, prefixo da senha (N, P, E…), prioridade e cor. Os padrões são *Atendimento Normal* (N, prioridade 1) e *Atendimento Preferencial* (P, prioridade 2).
 - **Fila por prioridade**: o botão "Chamar próxima" sempre busca a senha de maior prioridade e, em empate, a mais antiga. A numeração reinicia a cada dia, por tipo.
-- **Painel com voz**: ao chamar uma senha, o monitor toca um sinal sonoro e fala "Senha N-0-0-1, [nome], Guichê X" com a voz pt-BR do navegador. Por política dos navegadores, é preciso clicar uma vez em **"Ativar som"** ao abrir o painel na TV.
+- **Painel com voz**: ao chamar uma senha, o monitor toca um sinal sonoro e fala "Senha N-0-0-1, [nome], Guichê X" com a voz pt-BR do navegador. O som padrão (ligado/desligado) é definido em *Configurações → Painel TV*; o ícone 🔊/🔇 no cabeçalho permite silenciar na hora. A quantidade de "últimas chamadas" exibidas (1 a 10) também é configurável lá.
 - **Tempo real**: totem, painel, fila do atendente e dashboard atualizam via WebSocket, sem recarregar a página.
 - **Identidade visual**: em *Configurações → Aparência* é possível enviar a logo da empresa, definir o nome e a cor principal de todo o sistema (menu, botões, login e destaques).
-- **Temas**: cada usuário escolhe claro/escuro na área interna (botão 🌙/☀️ do menu). O tema do totem e do painel da TV é definido pelo superusuário em *Aparência* e atualiza as telas ao vivo.
+- **Temas**: cada usuário escolhe claro/escuro na área interna (botão 🌙/☀️ do menu). O tema do totem e do painel da TV é definido pelo superusuário nas abas *Tela Totem* e *Painel TV*, com atualização ao vivo.
+- **Configurações por tela**: as abas de configuração espelham as partes do sistema — Tipos de atendimento, Guichês, Usuários, Tela Totem, Painel TV (tema, som, últimas chamadas e propagandas) e Sistema (identidade da empresa).
+- **CRUD completo (somente superusuário)**: tipos, guichês e usuários podem ser criados, editados, desativados e excluídos. Registros com histórico de senhas não podem ser excluídos (o sistema orienta a desativar), e o superusuário não consegue excluir/rebaixar o próprio usuário.
 - **Menu recolhível**: o menu lateral pode ser recolhido para mostrar apenas a logo e os ícones.
 - **Propagandas na TV**: em *Configurações → Propagandas*, cadastre imagens (campanhas da clínica ou de parceiros) com duração e ordem; elas passam em rodízio ao lado das senhas no painel. Sem propagandas ativas, o painel usa a tela inteira para as chamadas.
 

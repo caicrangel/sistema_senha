@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api.js';
+import { api, getUser } from '../lib/api.js';
 import { Card, PageTitle, Button, Input, Select } from '../components/ui.jsx';
 import { useBranding } from '../lib/branding.jsx';
 
 const TABS = [
-  ['types', 'Tipos de atendimento'],
-  ['counters', 'Guichês'],
-  ['users', 'Usuários'],
-  ['appearance', 'Aparência'],
-  ['ads', 'Propagandas'],
+  ['types', '🎫 Tipos de atendimento'],
+  ['counters', '🪟 Guichês'],
+  ['users', '👤 Usuários'],
+  ['totem', '🖥️ Tela Totem'],
+  ['tv', '📺 Painel TV'],
+  ['system', '🏢 Sistema'],
 ];
 
 export default function Settings() {
@@ -16,8 +17,11 @@ export default function Settings() {
 
   return (
     <div>
-      <PageTitle title="Configurações" subtitle="Atendimento, guichês, usuários, aparência e propagandas" />
-      <div className="mb-6 flex gap-2">
+      <PageTitle
+        title="Configurações"
+        subtitle="Cada aba concentra o que afeta aquela parte do sistema"
+      />
+      <div className="mb-6 flex flex-wrap gap-2">
         {TABS.map(([key, label]) => (
           <button
             key={key}
@@ -33,8 +37,55 @@ export default function Settings() {
       {tab === 'types' && <ServiceTypes />}
       {tab === 'counters' && <Counters />}
       {tab === 'users' && <Users />}
-      {tab === 'appearance' && <Appearance />}
-      {tab === 'ads' && <Ads />}
+      {tab === 'totem' && <TotemTab />}
+      {tab === 'tv' && <PanelTvTab />}
+      {tab === 'system' && <SystemTab />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- utilitários
+
+function useCrud(listPath) {
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
+  const load = () => api(listPath).then(setItems).catch((e) => setError(e.message));
+  useEffect(() => { load(); }, []); // eslint-disable-line
+  return { items, error, setError, load };
+}
+
+// Formulário de configurações (settings chave/valor) com salvar parcial
+function useSettingsForm() {
+  const { settings, setSettings } = useBranding();
+  const [form, setForm] = useState(settings);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => setForm(settings), [settings]);
+
+  const save = async (keys) => {
+    setError('');
+    setSaved(false);
+    try {
+      const body = Object.fromEntries(keys.map((k) => [k, form[k] ?? '']));
+      const next = await api('/admin/settings', { method: 'PUT', body });
+      setSettings(next);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  return { form, setForm, save, saved, error };
+}
+
+function SaveRow({ onSave, saved, error, label = 'Salvar' }) {
+  return (
+    <div className="mt-6 flex items-center gap-3">
+      <Button onClick={onSave}>{label}</Button>
+      {saved && <span className="text-sm font-medium text-emerald-600">✓ Salvo! As telas atualizam sozinhas.</span>}
+      {error && <span className="text-sm text-red-600">{error}</span>}
     </div>
   );
 }
@@ -58,31 +109,18 @@ function readImage(file, maxDim, cb) {
   reader.readAsDataURL(file);
 }
 
-function Appearance() {
-  const { settings, setSettings } = useBranding();
-  const [form, setForm] = useState(settings);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState('');
+// ---------------------------------------------------------------- Sistema
 
-  useEffect(() => setForm(settings), [settings]);
-
-  const save = async () => {
-    setError('');
-    setSaved(false);
-    try {
-      const next = await api('/admin/settings', { method: 'PUT', body: form });
-      setSettings(next);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
+function SystemTab() {
+  const { form, setForm, save, saved, error } = useSettingsForm();
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
-        <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Identidade da empresa</h2>
+        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Identidade da empresa</h2>
+        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Vale para todo o sistema: menu, login, totem e painel da TV
+        </p>
         <div className="flex flex-col gap-4">
           <Input label="Nome da empresa" value={form.company_name || ''}
             onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
@@ -121,41 +159,96 @@ function Appearance() {
                 className="h-10 w-24 cursor-pointer rounded-xl border border-slate-300 dark:border-slate-600" />
               <span className="text-sm tabular-nums text-slate-500 dark:text-slate-400">{form.brand_color}</span>
             </div>
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-              Aplicada em botões, menu, login e destaques de todo o sistema
-            </p>
           </div>
         </div>
+        <SaveRow onSave={() => save(['company_name', 'logo', 'brand_color'])} saved={saved} error={error} label="Salvar identidade" />
       </Card>
 
       <Card>
-        <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Tema das telas públicas</h2>
-        <div className="flex flex-col gap-4">
-          <Select label="Tela do Totem" value={form.totem_theme || 'dark'}
-            onChange={(e) => setForm({ ...form, totem_theme: e.target.value })}>
-            <option value="dark">Escuro</option>
-            <option value="light">Claro</option>
-          </Select>
-          <Select label="Painel da TV" value={form.panel_theme || 'dark'}
-            onChange={(e) => setForm({ ...form, panel_theme: e.target.value })}>
-            <option value="dark">Escuro</option>
-            <option value="light">Claro</option>
-          </Select>
-          <p className="text-xs text-slate-400 dark:text-slate-500">
-            O tema da área interna é escolhido por cada usuário no botão 🌙/☀️ do menu lateral.
-            As telas do totem e da TV atualizam sozinhas ao salvar.
-          </p>
-        </div>
-
-        <div className="mt-6 flex items-center gap-3">
-          <Button onClick={save}>Salvar aparência</Button>
-          {saved && <span className="text-sm font-medium text-emerald-600">✓ Salvo!</span>}
-          {error && <span className="text-sm text-red-600">{error}</span>}
-        </div>
+        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Tema da área interna</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          O tema claro/escuro da área interna é uma preferência individual: cada usuário escolhe
+          no botão 🌙/☀️ do menu lateral e fica salvo no navegador da estação dele.
+          Os temas do Totem e do Painel TV ficam nas abas específicas dessas telas.
+        </p>
       </Card>
     </div>
   );
 }
+
+// ---------------------------------------------------------------- Tela Totem
+
+function TotemTab() {
+  const { form, setForm, save, saved, error } = useSettingsForm();
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <Card>
+        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Tela Totem</h2>
+        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Comportamento da tela pública de retirada de senhas (/totem)
+        </p>
+        <div className="flex flex-col gap-4">
+          <Select label="Tema" value={form.totem_theme || 'dark'}
+            onChange={(e) => setForm({ ...form, totem_theme: e.target.value })}>
+            <option value="dark">Escuro</option>
+            <option value="light">Claro</option>
+          </Select>
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            Os botões de atendimento exibidos no totem são os tipos ativos da aba
+            "Tipos de atendimento", com as cores definidas lá.
+          </p>
+        </div>
+        <SaveRow onSave={() => save(['totem_theme'])} saved={saved} error={error} label="Salvar Totem" />
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Painel TV
+
+function PanelTvTab() {
+  const { form, setForm, save, saved, error } = useSettingsForm();
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Painel TV</h2>
+          <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+            Comportamento da tela pública do monitor (/painel)
+          </p>
+          <div className="flex flex-col gap-4">
+            <Select label="Tema" value={form.panel_theme || 'dark'}
+              onChange={(e) => setForm({ ...form, panel_theme: e.target.value })}>
+              <option value="dark">Escuro</option>
+              <option value="light">Claro</option>
+            </Select>
+            <Select label="Som ao abrir o painel" value={form.panel_sound || 'on'}
+              onChange={(e) => setForm({ ...form, panel_sound: e.target.value })}>
+              <option value="on">Ligado — anuncia com voz e sinal sonoro</option>
+              <option value="off">Desligado — painel silencioso</option>
+            </Select>
+            <Input label="Quantidade de últimas chamadas exibidas (1 a 10)" type="number" min={1} max={10}
+              value={form.panel_last_calls || 5}
+              onChange={(e) => setForm({ ...form, panel_last_calls: e.target.value })} />
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Navegadores podem exigir um clique na página antes de liberar o áudio. Para a TV
+              em modo quiosque, abra o Chrome/Chromium com a opção
+              --autoplay-policy=no-user-gesture-required para o som funcionar direto.
+              O ícone 🔊/🔇 no cabeçalho do painel permite silenciar na hora, sem mudar esta configuração.
+            </p>
+          </div>
+          <SaveRow onSave={() => save(['panel_theme', 'panel_sound', 'panel_last_calls'])} saved={saved} error={error} label="Salvar Painel TV" />
+        </Card>
+      </div>
+
+      <Ads />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Propagandas (parte do Painel TV)
 
 function Ads() {
   const { items, error, setError, load } = useCrud('/admin/ads');
@@ -192,7 +285,10 @@ function Ads() {
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card>
-        <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Nova propaganda</h2>
+        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Nova propaganda</h2>
+        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Exibidas em rodízio no Painel TV, ao lado das senhas
+        </p>
         <form onSubmit={create} className="flex flex-col gap-3">
           <Input label="Título (uso interno)" value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })} required />
@@ -228,9 +324,7 @@ function Ads() {
       </Card>
 
       <Card className="lg:col-span-2">
-        <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">
-          Propagandas cadastradas — passam em rodízio na TV
-        </h2>
+        <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Propagandas cadastradas</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {items.map((ad) => (
             <div key={ad.id} className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -266,13 +360,7 @@ function Ads() {
   );
 }
 
-function useCrud(listPath) {
-  const [items, setItems] = useState([]);
-  const [error, setError] = useState('');
-  const load = () => api(listPath).then(setItems).catch((e) => setError(e.message));
-  useEffect(() => { load(); }, []); // eslint-disable-line
-  return { items, error, setError, load };
-}
+// ---------------------------------------------------------------- Tipos de atendimento
 
 function ServiceTypes() {
   const { items, error, setError, load } = useCrud('/admin/service-types?all=1');
@@ -295,6 +383,16 @@ function ServiceTypes() {
     load();
   };
 
+  const remove = async (t) => {
+    if (!confirm(`Excluir o tipo "${t.name}"? Só é possível se não houver senhas no histórico.`)) return;
+    try {
+      await api(`/admin/service-types/${t.id}`, { method: 'DELETE' });
+      load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card>
@@ -307,10 +405,10 @@ function ServiceTypes() {
           <Input label="Prioridade (maior = chamado antes)" type="number" min={1} max={10} value={form.priority}
             onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} />
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Cor</span>
+            <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Cor</span>
             <input type="color" value={form.color}
               onChange={(e) => setForm({ ...form, color: e.target.value })}
-              className="h-10 w-full cursor-pointer rounded-xl border border-slate-300" />
+              className="h-10 w-full cursor-pointer rounded-xl border border-slate-300 dark:border-slate-600" />
           </label>
           {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
           <Button type="submit">Criar tipo</Button>
@@ -324,7 +422,7 @@ function ServiceTypes() {
         </p>
         <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
           {items.map((t) => (
-            <ServiceTypeRow key={t.id} type={t} onToggle={toggle} onSaved={load} />
+            <ServiceTypeRow key={t.id} type={t} onToggle={toggle} onDelete={remove} onSaved={load} />
           ))}
         </div>
       </Card>
@@ -332,7 +430,7 @@ function ServiceTypes() {
   );
 }
 
-function ServiceTypeRow({ type: t, onToggle, onSaved }) {
+function ServiceTypeRow({ type: t, onToggle, onDelete, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ name: t.name, prefix: t.prefix, priority: t.priority, color: t.color });
   const [error, setError] = useState('');
@@ -384,7 +482,7 @@ function ServiceTypeRow({ type: t, onToggle, onSaved }) {
   }
 
   return (
-    <div className="flex items-center gap-4 py-3">
+    <div className="flex items-center gap-3 py-3">
       <span className="grid h-10 w-14 place-items-center rounded-lg font-black text-white"
         style={{ backgroundColor: t.color }}>
         {t.prefix}
@@ -399,9 +497,12 @@ function ServiceTypeRow({ type: t, onToggle, onSaved }) {
       <Button variant={t.active ? 'secondary' : 'success'} onClick={() => onToggle(t)}>
         {t.active ? 'Desativar' : 'Ativar'}
       </Button>
+      <Button variant="danger" onClick={() => onDelete(t)}>Excluir</Button>
     </div>
   );
 }
+
+// ---------------------------------------------------------------- Guichês
 
 function Counters() {
   const { items, error, setError, load } = useCrud('/admin/counters');
@@ -419,11 +520,6 @@ function Counters() {
     }
   };
 
-  const toggle = async (c) => {
-    await api(`/admin/counters/${c.id}`, { method: 'PUT', body: { active: !c.active } });
-    load();
-  };
-
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card>
@@ -437,22 +533,75 @@ function Counters() {
       </Card>
       <Card className="lg:col-span-2">
         <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Guichês cadastrados</h2>
-        <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800 dark:divide-slate-800">
+        <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
           {items.map((c) => (
-            <div key={c.id} className="flex items-center justify-between py-3">
-              <span className={c.active ? 'font-medium text-slate-900' : 'text-slate-400 line-through'}>
-                {c.name}
-              </span>
-              <Button variant={c.active ? 'secondary' : 'success'} onClick={() => toggle(c)}>
-                {c.active ? 'Desativar' : 'Ativar'}
-              </Button>
-            </div>
+            <CounterRow key={c.id} counter={c} onSaved={load} />
           ))}
         </div>
       </Card>
     </div>
   );
 }
+
+function CounterRow({ counter: c, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(c.name);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    setError('');
+    try {
+      await api(`/admin/counters/${c.id}`, { method: 'PUT', body: { name } });
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const toggle = async () => {
+    await api(`/admin/counters/${c.id}`, { method: 'PUT', body: { active: !c.active } });
+    onSaved();
+  };
+
+  const remove = async () => {
+    if (!confirm(`Excluir o guichê "${c.name}"? Só é possível se não houver senhas no histórico.`)) return;
+    try {
+      await api(`/admin/counters/${c.id}`, { method: 'DELETE' });
+      onSaved();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-end gap-3 py-3">
+        <div className="flex-1">
+          <Input label="Nome do guichê" value={name} onChange={(e) => setName(e.target.value)} />
+          {error && <p className="mt-2 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+        </div>
+        <Button onClick={save}>Salvar</Button>
+        <Button variant="secondary" onClick={() => { setEditing(false); setName(c.name); setError(''); }}>Cancelar</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <span className={`flex-1 ${c.active ? 'font-medium text-slate-900 dark:text-white' : 'text-slate-400 line-through'}`}>
+        {c.name}
+      </span>
+      <Button variant="secondary" onClick={() => setEditing(true)}>✏️ Editar</Button>
+      <Button variant={c.active ? 'secondary' : 'success'} onClick={toggle}>
+        {c.active ? 'Desativar' : 'Ativar'}
+      </Button>
+      <Button variant="danger" onClick={remove}>Excluir</Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Usuários
 
 function Users() {
   const { items, error, setError, load } = useCrud('/admin/users');
@@ -467,22 +616,6 @@ function Users() {
       load();
     } catch (e2) {
       setError(e2.message);
-    }
-  };
-
-  const toggle = async (u) => {
-    await api(`/admin/users/${u.id}`, { method: 'PUT', body: { active: !u.active } });
-    load();
-  };
-
-  const resetPassword = async (u) => {
-    const pw = prompt(`Nova senha para ${u.name} (mínimo 6 caracteres):`);
-    if (!pw) return;
-    try {
-      await api(`/admin/users/${u.id}`, { method: 'PUT', body: { password: pw } });
-      alert('Senha alterada com sucesso');
-    } catch (e2) {
-      alert(e2.message);
     }
   };
 
@@ -507,27 +640,107 @@ function Users() {
         </form>
       </Card>
       <Card className="lg:col-span-2">
-        <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Usuários cadastrados</h2>
-        <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800 dark:divide-slate-800">
+        <h2 className="mb-1 font-semibold text-slate-900 dark:text-white">Usuários cadastrados</h2>
+        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+          O login (usuário) não muda após a criação; nome, perfil e senha podem ser editados
+        </p>
+        <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
           {items.map((u) => (
-            <div key={u.id} className="flex items-center gap-4 py-3">
-              <div className="flex-1">
-                <div className={`font-medium ${u.active ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
-                  {u.name}
-                  <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                    {u.role === 'admin' ? 'Superusuário' : 'Atendente'}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">@{u.username}</div>
-              </div>
-              <Button variant="secondary" onClick={() => resetPassword(u)}>Redefinir senha</Button>
-              <Button variant={u.active ? 'secondary' : 'success'} onClick={() => toggle(u)}>
-                {u.active ? 'Desativar' : 'Ativar'}
-              </Button>
-            </div>
+            <UserRow key={u.id} user={u} onSaved={load} />
           ))}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function UserRow({ user: u, onSaved }) {
+  const me = getUser();
+  const isSelf = me?.id === u.id;
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ name: u.name, role: u.role, password: '' });
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    setError('');
+    try {
+      const body = { name: form.name, role: form.role };
+      if (form.password) body.password = form.password;
+      await api(`/admin/users/${u.id}`, { method: 'PUT', body });
+      setEditing(false);
+      setForm((p) => ({ ...p, password: '' }));
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const toggle = async () => {
+    await api(`/admin/users/${u.id}`, { method: 'PUT', body: { active: !u.active } });
+    onSaved();
+  };
+
+  const remove = async () => {
+    if (!confirm(`Excluir o usuário "${u.name}"? Só é possível se não houver atendimentos no histórico.`)) return;
+    try {
+      await api(`/admin/users/${u.id}`, { method: 'DELETE' });
+      onSaved();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-3 py-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Input label="Nome" value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Select label="Perfil" value={form.role} disabled={isSelf}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}>
+            <option value="attendant">Atendente</option>
+            <option value="admin">Superusuário</option>
+          </Select>
+          <Input label="Nova senha (deixe vazio para manter)" type="password" minLength={6} value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })} />
+        </div>
+        {isSelf && (
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            Você não pode alterar o próprio perfil (evita ficar sem superusuário).
+          </p>
+        )}
+        {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+        <div className="flex gap-2">
+          <Button onClick={save}>Salvar alterações</Button>
+          <Button variant="secondary" onClick={() => { setEditing(false); setError(''); setForm({ name: u.name, role: u.role, password: '' }); }}>
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <div className="flex-1">
+        <div className={`font-medium ${u.active ? 'text-slate-900 dark:text-white' : 'text-slate-400 line-through'}`}>
+          {u.name}
+          <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            {u.role === 'admin' ? 'Superusuário' : 'Atendente'}
+          </span>
+          {isSelf && <span className="ml-2 text-xs text-slate-400">(você)</span>}
+        </div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">@{u.username}</div>
+      </div>
+      <Button variant="secondary" onClick={() => setEditing(true)}>✏️ Editar</Button>
+      {!isSelf && (
+        <>
+          <Button variant={u.active ? 'secondary' : 'success'} onClick={toggle}>
+            {u.active ? 'Desativar' : 'Ativar'}
+          </Button>
+          <Button variant="danger" onClick={remove}>Excluir</Button>
+        </>
+      )}
     </div>
   );
 }

@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth, requireAdmin } from '../auth.js';
 
-const SETTING_KEYS = ['company_name', 'brand_color', 'logo', 'totem_theme', 'panel_theme'];
+const SETTING_KEYS = [
+  'company_name', 'brand_color', 'logo',
+  'totem_theme',
+  'panel_theme', 'panel_sound', 'panel_last_calls',
+];
 
 export default function settingsRoutes(io) {
   const router = Router();

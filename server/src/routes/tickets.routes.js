@@ -3,15 +3,33 @@ import { pool, query } from '../db.js';
 import { requireAuth } from '../auth.js';
 
 async function panelState() {
-  const { rows: current } = await query(
+  const { rows: cfg } = await query(`SELECT value FROM settings WHERE key = 'panel_last_calls'`);
+  const lastN = Math.max(1, Math.min(10, parseInt(cfg[0]?.value, 10) || 5));
+
+  const { rows: cur } = await query(
     `SELECT t.*, st.name AS service_name, st.color, st.prefix, c.name AS counter_name
      FROM tickets t
      JOIN service_types st ON st.id = t.service_type_id
      LEFT JOIN counters c ON c.id = t.counter_id
      WHERE t.status IN ('called', 'in_service') AND t.called_at::date = CURRENT_DATE
      ORDER BY t.called_at DESC
-     LIMIT 6`
+     LIMIT 1`
   );
+  const current = cur[0] || null;
+
+  // Últimas chamadas do dia (inclui concluídas/não compareceu — histórico de chamadas)
+  const { rows: lastCalls } = await query(
+    `SELECT t.*, st.name AS service_name, st.color, st.prefix, c.name AS counter_name
+     FROM tickets t
+     JOIN service_types st ON st.id = t.service_type_id
+     LEFT JOIN counters c ON c.id = t.counter_id
+     WHERE t.called_at IS NOT NULL AND t.called_at::date = CURRENT_DATE
+       AND ($1::int IS NULL OR t.id <> $1)
+     ORDER BY t.called_at DESC
+     LIMIT $2`,
+    [current?.id ?? null, lastN]
+  );
+
   const { rows: waiting } = await query(
     `SELECT st.id, st.name, st.color, st.prefix, COUNT(t.id)::int AS waiting
      FROM service_types st
@@ -21,7 +39,7 @@ async function panelState() {
      GROUP BY st.id, st.name, st.color, st.prefix
      ORDER BY st.priority DESC, st.id`
   );
-  return { current: current[0] || null, lastCalls: current.slice(1), waiting };
+  return { current, lastCalls, waiting };
 }
 
 export default function ticketRoutes(io) {

@@ -38,6 +38,11 @@ export default function Monitor() {
   const { settings } = useBranding();
   const dark = usePublicTheme(settings.panel_theme);
 
+  // Som padrão definido em Configurações > Painel TV; pode ser alternado no ícone do cabeçalho
+  useEffect(() => {
+    setSoundOn(settings.panel_sound === 'on');
+  }, [settings.panel_sound]);
+
   useEffect(() => {
     const load = () => api('/tickets/panel', { auth: false }).then(setState).catch(() => {});
     const loadAds = () => api('/ads/active', { auth: false }).then(setAds).catch(() => {});
@@ -81,15 +86,14 @@ export default function Monitor() {
           {settings.logo && <img src={settings.logo} alt="Logo" className="h-12 object-contain" />}
           <h1 className="text-3xl font-bold tracking-tight">{settings.company_name || 'Painel de Atendimento'}</h1>
         </div>
-        <div className="flex items-center gap-6">
-          {!soundOn && (
-            <button
-              onClick={() => setSoundOn(true)}
-              className="animate-pulse rounded-xl bg-amber-500 px-5 py-2.5 text-lg font-bold text-slate-900"
-            >
-              🔊 Toque para ativar o som
-            </button>
-          )}
+        <div className="flex items-center gap-5">
+          <button
+            onClick={() => setSoundOn((v) => !v)}
+            title={soundOn ? 'Som ligado (toque para silenciar)' : 'Som desligado (toque para ativar)'}
+            className={`rounded-xl px-3 py-1.5 text-2xl transition-opacity ${soundOn ? 'opacity-90' : 'opacity-40'}`}
+          >
+            {soundOn ? '🔊' : '🔇'}
+          </button>
           <span className={`text-3xl font-semibold tabular-nums ${subtle}`}>
             {clock.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
           </span>
@@ -143,7 +147,7 @@ export default function Monitor() {
           {/* Últimas chamadas */}
           <h2 className={`mb-3 mt-6 text-xl font-bold ${subtle}`}>Últimas chamadas</h2>
           <div className="flex flex-col gap-2 overflow-hidden">
-            {state.lastCalls.slice(0, 4).map((t) => (
+            {state.lastCalls.map((t) => (
               <div key={t.id} className={`flex items-center justify-between rounded-2xl px-5 py-3 ${dark ? 'bg-slate-900' : 'bg-white shadow'}`}>
                 <div className="flex items-baseline gap-3 overflow-hidden">
                   <span className="text-2xl font-black tabular-nums">{t.code}</span>

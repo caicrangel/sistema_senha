@@ -59,6 +59,21 @@ export default function adminRoutes(io) {
     }
   });
 
+  router.delete('/service-types/:id', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      await query('DELETE FROM service_types WHERE id = $1', [req.params.id]);
+      io.emit('config:update');
+      res.json({ ok: true });
+    } catch (e) {
+      if (e.code === '23503') {
+        return res.status(400).json({
+          error: 'Este tipo possui senhas no histórico e não pode ser excluído. Desative-o.',
+        });
+      }
+      next(e);
+    }
+  });
+
   // ------- Guichês -------
   router.get('/counters', requireAuth, async (_req, res, next) => {
     try {
@@ -91,6 +106,20 @@ export default function adminRoutes(io) {
       if (!rows[0]) return res.status(404).json({ error: 'Guichê não encontrado' });
       res.json(rows[0]);
     } catch (e) {
+      next(e);
+    }
+  });
+
+  router.delete('/counters/:id', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      await query('DELETE FROM counters WHERE id = $1', [req.params.id]);
+      res.json({ ok: true });
+    } catch (e) {
+      if (e.code === '23503') {
+        return res.status(400).json({
+          error: 'Este guichê possui senhas no histórico e não pode ser excluído. Desative-o.',
+        });
+      }
       next(e);
     }
   });
@@ -129,6 +158,9 @@ export default function adminRoutes(io) {
   router.put('/users/:id', requireAuth, requireAdmin, async (req, res, next) => {
     try {
       const { name, password, role, active } = req.body || {};
+      if (Number(req.params.id) === req.user.id && ((role && role !== 'admin') || active === false)) {
+        return res.status(400).json({ error: 'Você não pode rebaixar ou desativar seu próprio usuário' });
+      }
       let hash = null;
       if (password) {
         if (password.length < 6) return res.status(400).json({ error: 'Senha mínima de 6 caracteres' });
@@ -146,6 +178,23 @@ export default function adminRoutes(io) {
       if (!rows[0]) return res.status(404).json({ error: 'Usuário não encontrado' });
       res.json(rows[0]);
     } catch (e) {
+      next(e);
+    }
+  });
+
+  router.delete('/users/:id', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      if (Number(req.params.id) === req.user.id) {
+        return res.status(400).json({ error: 'Você não pode excluir seu próprio usuário' });
+      }
+      await query('DELETE FROM users WHERE id = $1', [req.params.id]);
+      res.json({ ok: true });
+    } catch (e) {
+      if (e.code === '23503') {
+        return res.status(400).json({
+          error: 'Este usuário possui atendimentos no histórico e não pode ser excluído. Desative-o.',
+        });
+      }
       next(e);
     }
   });
