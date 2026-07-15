@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from '../db.js';
-import { requireAuth, requireAdmin } from '../auth.js';
+import { requireAuth, requireAdmin, PERMISSIONS, parsePermissions } from '../auth.js';
+
+const clean = (perms) =>
+  JSON.stringify((Array.isArray(perms) ? perms : []).filter((p) => PERMISSIONS.includes(p)));
 
 export default function adminRoutes(io) {
   const router = Router();
@@ -128,9 +131,9 @@ export default function adminRoutes(io) {
   router.get('/users', requireAuth, requireAdmin, async (_req, res, next) => {
     try {
       const { rows } = await query(
-        'SELECT id, name, username, role, active, created_at FROM users ORDER BY id'
+        'SELECT id, name, username, role, active, permissions, created_at FROM users ORDER BY id'
       );
-      res.json(rows);
+      res.json(rows.map((u) => ({ ...u, permissions: parsePermissions(u.permissions) })));
     } catch (e) {
       next(e);
     }
@@ -138,17 +141,23 @@ export default function adminRoutes(io) {
 
   router.post('/users', requireAuth, requireAdmin, async (req, res, next) => {
     try {
-      const { name, username, password, role = 'attendant' } = req.body || {};
+      const { name, username, password, role = 'attendant', permissions } = req.body || {};
       if (!name?.trim() || !username?.trim() || !password || password.length < 6) {
         return res.status(400).json({ error: 'Preencha nome, usuário e senha (mínimo 6 caracteres)' });
       }
       const hash = await bcrypt.hash(password, 10);
       const { rows } = await query(
-        `INSERT INTO users (name, username, password_hash, role)
-         VALUES ($1, $2, $3, $4) RETURNING id, name, username, role, active`,
-        [name.trim(), username.trim().toLowerCase(), hash, role === 'admin' ? 'admin' : 'attendant']
+        `INSERT INTO users (name, username, password_hash, role, permissions)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, name, username, role, active, permissions`,
+        [
+          name.trim(),
+          username.trim().toLowerCase(),
+          hash,
+          role === 'admin' ? 'admin' : 'attendant',
+          permissions !== undefined ? clean(permissions) : '["atendimento","senhas"]',
+        ]
       );
-      res.status(201).json(rows[0]);
+      res.status(201).json({ ...rows[0], permissions: parsePermissions(rows[0].permissions) });
     } catch (e) {
       if (e.code === '23505') return res.status(400).json({ error: 'Nome de usuário já existe' });
       next(e);
@@ -157,7 +166,7 @@ export default function adminRoutes(io) {
 
   router.put('/users/:id', requireAuth, requireAdmin, async (req, res, next) => {
     try {
-      const { name, password, role, active } = req.body || {};
+      const { name, password, role, active, permissions } = req.body || {};
       if (Number(req.params.id) === req.user.id && ((role && role !== 'admin') || active === false)) {
         return res.status(400).json({ error: 'Você não pode rebaixar ou desativar seu próprio usuário' });
       }
@@ -171,12 +180,72 @@ export default function adminRoutes(io) {
            name = COALESCE($1, name),
            password_hash = COALESCE($2, password_hash),
            role = COALESCE($3, role),
-           active = COALESCE($4, active)
-         WHERE id = $5 RETURNING id, name, username, role, active`,
-        [name?.trim(), hash, role, active, req.params.id]
+           active = COALESCE($4, active),
+           permissions = COALESCE($5, permissions)
+         WHERE id = $6 RETURNING id, name, username, role, active, permissions`,
+        [name?.trim(), hash, role, active, permissions !== undefined ? clean(permissions) : null, req.params.id]
       );
       if (!rows[0]) return res.status(404).json({ error: 'Usuário não encontrado' });
+      res.json({ ...rows[0], permissions: parsePermissions(rows[0].permissions) });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ------- Banco de dados (tarefas administrativas) -------
+  router.get('/db/stats', requireAuth, requireAdmin, async (_req, res, next) => {
+    try {
+      const { rows } = await query(
+        `SELECT
+           (SELECT COUNT(*) FROM tickets)::int AS tickets,
+           (SELECT COUNT(*) FROM users)::int AS users,
+           (SELECT COUNT(*) FROM service_types)::int AS service_types,
+           (SELECT COUNT(*) FROM counters)::int AS counters,
+           (SELECT COUNT(*) FROM ads)::int AS ads,
+           (SELECT MIN(created_at) FROM tickets) AS oldest_ticket,
+           (SELECT MAX(created_at) FROM tickets) AS newest_ticket,
+           pg_size_pretty(pg_database_size(current_database())) AS db_size`
+      );
       res.json(rows[0]);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Limpa senhas: todas ou apenas anteriores a uma data (preserva cadastros)
+  router.post('/db/clear-tickets', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const { all, before } = req.body || {};
+      let result;
+      if (all === true) {
+        result = await query('DELETE FROM tickets');
+      } else if (before) {
+        result = await query('DELETE FROM tickets WHERE created_at::date < $1', [before]);
+      } else {
+        return res.status(400).json({ error: 'Informe uma data limite ou confirme a limpeza total' });
+      }
+      io.emit('queue:update', { current: null, lastCalls: [], waiting: [] });
+      io.emit('config:update');
+      res.json({ ok: true, removed: result.rowCount });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Backup em JSON de todas as tabelas
+  router.get('/db/export', requireAuth, requireAdmin, async (_req, res, next) => {
+    try {
+      const dump = {};
+      for (const table of ['users', 'service_types', 'counters', 'tickets', 'settings', 'ads']) {
+        const { rows } = await query(`SELECT * FROM ${table} ORDER BY 1`);
+        dump[table] = rows;
+      }
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=backup_senhas_${new Date().toLocaleDateString('en-CA')}.json`
+      );
+      res.send(JSON.stringify({ generated_at: new Date().toISOString(), ...dump }, null, 2));
     } catch (e) {
       next(e);
     }

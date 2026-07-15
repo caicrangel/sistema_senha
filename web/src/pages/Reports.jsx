@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, getToken } from '../lib/api.js';
+import { api, downloadFile } from '../lib/api.js';
 import { Card, PageTitle, Button, Input, StatusBadge } from '../components/ui.jsx';
 import { StatTile, BarChart, HBarChart } from '../components/charts.jsx';
 
@@ -41,17 +41,21 @@ export default function Reports() {
     load();
   }, [load]);
 
-  const exportCsv = async () => {
-    const res = await fetch(`/api/reports/tickets?from=${from}&to=${to}&format=csv`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `relatorio_${from}_${to}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const [exporting, setExporting] = useState('');
+
+  const doExport = async (format) => {
+    setExporting(format);
+    try {
+      if (format === 'csv') {
+        await downloadFile(`/reports/tickets?from=${from}&to=${to}&format=csv`, `relatorio_${from}_${to}.csv`);
+      } else {
+        await downloadFile(`/reports/export?from=${from}&to=${to}&format=${format}`, `relatorio_${from}_${to}.${format}`);
+      }
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setExporting('');
+    }
   };
 
   const t = summary?.totals || {};
@@ -64,7 +68,17 @@ export default function Reports() {
   return (
     <div>
       <PageTitle title="Relatórios" subtitle="Análise de atendimento por período">
-        <Button variant="secondary" onClick={exportCsv}>⬇️ Exportar CSV</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" disabled={!!exporting} onClick={() => doExport('pdf')}>
+            {exporting === 'pdf' ? 'Gerando…' : '📄 PDF'}
+          </Button>
+          <Button variant="secondary" disabled={!!exporting} onClick={() => doExport('xlsx')}>
+            {exporting === 'xlsx' ? 'Gerando…' : '📊 Excel'}
+          </Button>
+          <Button variant="secondary" disabled={!!exporting} onClick={() => doExport('csv')}>
+            {exporting === 'csv' ? 'Gerando…' : '⬇️ CSV'}
+          </Button>
+        </div>
       </PageTitle>
 
       <Card className="mb-6">

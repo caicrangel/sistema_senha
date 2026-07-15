@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS ads (
   active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS
+  permissions TEXT NOT NULL DEFAULT '["atendimento","senhas"]';
 `;
 
 export async function migrate() {

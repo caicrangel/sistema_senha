@@ -30,10 +30,10 @@ Acesse `http://<ip-do-servidor>:8080` (porta configurável via `HTTP_PORT` no `.
 | `/totem` | Público | Totem de autoatendimento: retira senha por tipo (com nome opcional) |
 | `/painel` | Público | Painel para TV/monitor: senha chamada em destaque, últimas chamadas, filas e **anúncio por voz** |
 | `/login` | Público | Login de atendentes e superusuário |
-| `/atendimento` | Atendente | Chamar próxima senha, rechamar, iniciar, finalizar, não compareceu |
-| `/senhas` | Atendente | Painel de gestão de senhas do dia (com cancelamento) |
-| `/dashboard` | Superusuário | Indicadores do dia em tempo real |
-| `/relatorios` | Superusuário | Relatórios por período + exportação CSV |
+| `/atendimento` | Permissão | Chamar próxima senha, rechamar, iniciar, finalizar, não compareceu |
+| `/senhas` | Permissão | Painel de gestão de senhas do dia (com cancelamento) |
+| `/dashboard` | Permissão | Indicadores do dia em tempo real |
+| `/relatorios` | Permissão | Relatórios por período + exportação PDF, Excel e CSV |
 | `/configuracoes` | Superusuário | Tipos de atendimento (ilimitados), guichês, usuários, aparência e propagandas |
 
 ## Como funciona
@@ -46,6 +46,9 @@ Acesse `http://<ip-do-servidor>:8080` (porta configurável via `HTTP_PORT` no `.
 - **Temas**: cada usuário escolhe claro/escuro na área interna (botão 🌙/☀️ do menu). O tema do totem e do painel da TV é definido pelo superusuário nas abas *Tela Totem* e *Painel TV*, com atualização ao vivo.
 - **Configurações por tela**: as abas de configuração espelham as partes do sistema — Tipos de atendimento, Guichês, Usuários, Tela Totem, Painel TV (tema, som, últimas chamadas e propagandas) e Sistema (identidade da empresa).
 - **CRUD completo (somente superusuário)**: tipos, guichês e usuários podem ser criados, editados, desativados e excluídos. Registros com histórico de senhas não podem ser excluídos (o sistema orienta a desativar), e o superusuário não consegue excluir/rebaixar o próprio usuário.
+- **Permissões por usuário**: ao criar/editar um usuário, o superusuário marca quais telas ele acessa (Atendimento, Gestão de Senhas, Dashboard, Relatórios). O menu e as rotas obedecem às permissões; Configurações é sempre exclusiva do superusuário.
+- **Exportações**: relatórios em **PDF** (paisagem, com logo da empresa, período e carimbo "gerado em/por"), **Excel** e **CSV** — tudo em pt-BR, com data e hora em colunas separadas e duração por senha.
+- **Banco de dados (Configurações → Banco de dados)**: estatísticas do banco, backup em JSON, limpeza de senhas anteriores a uma data ou limpeza total (com confirmação digitada). Para backup completo: `docker exec senha_db pg_dump -U senhas senhas > backup.sql`.
 - **Menu recolhível**: o menu lateral pode ser recolhido para mostrar apenas a logo e os ícones.
 - **Propagandas na TV**: em *Configurações → Propagandas*, cadastre imagens (campanhas da clínica ou de parceiros) com duração e ordem; elas passam em rodízio ao lado das senhas no painel. Sem propagandas ativas, o painel usa a tela inteira para as chamadas.
 

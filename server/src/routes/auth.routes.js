@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from '../db.js';
-import { signToken, requireAuth } from '../auth.js';
+import { signToken, requireAuth, parsePermissions } from '../auth.js';
 
 const router = Router();
 
@@ -21,7 +21,13 @@ router.post('/login', async (req, res, next) => {
     }
     res.json({
       token: signToken(user),
-      user: { id: user.id, name: user.name, username: user.username, role: user.role },
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        permissions: parsePermissions(user.permissions),
+      },
     });
   } catch (e) {
     next(e);

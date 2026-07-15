@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { getUser, clearSession } from '../lib/api.js';
+import { getUser, clearSession, hasPerm } from '../lib/api.js';
 import { useBranding, useInternalTheme } from '../lib/branding.jsx';
 
 export default function Layout() {
@@ -31,12 +31,13 @@ export default function Layout() {
         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
     }`;
 
+  // [rota, ícone, rótulo, permissão] — Configurações é sempre exclusiva do superusuário
   const links = [
-    ['/atendimento', '🎧', 'Atendimento', false],
-    ['/senhas', '🎫', 'Gestão de Senhas', false],
-    ['/dashboard', '📊', 'Dashboard', true],
-    ['/relatorios', '📄', 'Relatórios', true],
-    ['/configuracoes', '⚙️', 'Configurações', true],
+    ['/atendimento', '🎧', 'Atendimento', 'atendimento'],
+    ['/senhas', '🎫', 'Gestão de Senhas', 'senhas'],
+    ['/dashboard', '📊', 'Dashboard', 'dashboard'],
+    ['/relatorios', '📄', 'Relatórios', 'relatorios'],
+    ['/configuracoes', '⚙️', 'Configurações', 'admin'],
   ];
 
   return (
@@ -73,14 +74,15 @@ export default function Layout() {
         </button>
 
         <nav className="flex flex-col gap-1">
-          {links.map(([to, icon, label, adminOnly]) =>
-            adminOnly && !isAdmin ? null : (
+          {links.map(([to, icon, label, perm]) => {
+            const allowed = perm === 'admin' ? isAdmin : hasPerm(perm);
+            return !allowed ? null : (
               <NavLink key={to} to={to} className={linkClass} title={collapsed ? label : undefined}>
                 <span className="text-lg leading-none">{icon}</span>
                 {!collapsed && <span>{label}</span>}
               </NavLink>
-            )
-          )}
+            );
+          })}
         </nav>
 
         <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">

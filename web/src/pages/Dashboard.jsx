@@ -4,17 +4,16 @@ import { getSocket } from '../lib/socket.js';
 import { Card, PageTitle } from '../components/ui.jsx';
 import { StatTile, BarChart, HBarChart } from '../components/charts.jsx';
 
-// Data de hoje no fuso local (não em UTC)
-const today = () => new Date().toLocaleDateString('en-CA');
-
 const fmtMin = (m) =>
   m == null ? null : m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}min` : `${m} min`;
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
 
+  // Sem parâmetros de data: o servidor usa o "hoje" do fuso da clínica,
+  // evitando divergência entre o relógio do navegador e o do servidor
   const load = useCallback(() => {
-    api(`/reports/summary?from=${today()}&to=${today()}`).then(setData).catch(() => {});
+    api('/reports/summary').then(setData).catch(() => {});
   }, []);
 
   useEffect(() => {

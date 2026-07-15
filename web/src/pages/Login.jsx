@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { api, saveSession, getToken } from '../lib/api.js';
+import { api, saveSession, getToken, getUser, homeScreen } from '../lib/api.js';
 import { Button, Input } from '../components/ui.jsx';
 import { useBranding } from '../lib/branding.jsx';
 
@@ -12,7 +12,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  if (getToken()) return <Navigate to="/atendimento" replace />;
+  if (getToken()) return <Navigate to={homeScreen(getUser())} replace />;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -25,7 +25,7 @@ export default function Login() {
         body: { username, password },
       });
       saveSession(token, user);
-      navigate(user.role === 'admin' ? '/dashboard' : '/atendimento');
+      navigate(homeScreen(user));
     } catch (e2) {
       setError(e2.message);
     } finally {

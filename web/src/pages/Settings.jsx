@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, getUser } from '../lib/api.js';
+import { api, getUser, downloadFile } from '../lib/api.js';
 import { Card, PageTitle, Button, Input, Select } from '../components/ui.jsx';
 import { useBranding } from '../lib/branding.jsx';
 
@@ -10,6 +10,15 @@ const TABS = [
   ['totem', '🖥️ Tela Totem'],
   ['tv', '📺 Painel TV'],
   ['system', '🏢 Sistema'],
+  ['db', '🗄️ Banco de dados'],
+];
+
+// Telas que podem ser liberadas por usuário (Configurações é sempre do superusuário)
+const PERM_OPTIONS = [
+  ['atendimento', 'Atendimento (chamar senhas)'],
+  ['senhas', 'Gestão de Senhas'],
+  ['dashboard', 'Dashboard'],
+  ['relatorios', 'Relatórios'],
 ];
 
 export default function Settings() {
@@ -40,6 +49,130 @@ export default function Settings() {
       {tab === 'totem' && <TotemTab />}
       {tab === 'tv' && <PanelTvTab />}
       {tab === 'system' && <SystemTab />}
+      {tab === 'db' && <DatabaseTab />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Banco de dados
+
+function DatabaseTab() {
+  const [stats, setStats] = useState(null);
+  const [before, setBefore] = useState('');
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api('/admin/db/stats').then(setStats).catch((e) => setError(e.message));
+  useEffect(() => { load(); }, []);
+
+  const run = async (fn) => {
+    setBusy(true);
+    setMsg('');
+    setError('');
+    try {
+      await fn();
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clearBefore = () =>
+    run(async () => {
+      if (!before) throw new Error('Escolha a data limite');
+      if (!confirm(`Excluir TODAS as senhas anteriores a ${before.split('-').reverse().join('/')}? Elas saem dos relatórios definitivamente.`)) return;
+      const r = await api('/admin/db/clear-tickets', { method: 'POST', body: { before } });
+      setMsg(`${r.removed} senha(s) removida(s).`);
+    });
+
+  const clearAll = () =>
+    run(async () => {
+      const typed = prompt('⚠️ Isso apaga TODAS as senhas e zera os relatórios (cadastros, usuários e configurações são mantidos).\n\nDigite LIMPAR para confirmar:');
+      if (typed !== 'LIMPAR') {
+        if (typed !== null) setError('Confirmação incorreta — nada foi apagado.');
+        return;
+      }
+      const r = await api('/admin/db/clear-tickets', { method: 'POST', body: { all: true } });
+      setMsg(`${r.removed} senha(s) removida(s). Banco de senhas zerado.`);
+    });
+
+  const backup = () =>
+    run(() => downloadFile('/admin/db/export', `backup_senhas_${new Date().toLocaleDateString('en-CA')}.json`));
+
+  const fmtD = (d) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—');
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <Card>
+        <h2 className="mb-4 font-semibold text-slate-900 dark:text-white">Estado do banco</h2>
+        {stats ? (
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {[
+              ['Senhas armazenadas', stats.tickets],
+              ['Usuários', stats.users],
+              ['Tipos de atendimento', stats.service_types],
+              ['Guichês', stats.counters],
+              ['Propagandas', stats.ads],
+              ['Tamanho do banco', stats.db_size],
+              ['Senha mais antiga', fmtD(stats.oldest_ticket)],
+              ['Senha mais recente', fmtD(stats.newest_ticket)],
+            ].map(([k, v]) => (
+              <div key={k} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                <div className="text-xs text-slate-500 dark:text-slate-400">{k}</div>
+                <div className="font-bold text-slate-900 dark:text-white">{v ?? '—'}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">Carregando…</p>
+        )}
+        <div className="mt-4">
+          <Button variant="secondary" disabled={busy} onClick={backup}>💾 Baixar backup (JSON)</Button>
+          <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+            Exporta todas as tabelas. Para backup completo do volume, use pg_dump no servidor:
+            docker exec senha_db pg_dump -U senhas senhas &gt; backup.sql
+          </p>
+        </div>
+      </Card>
+
+      <Card className="border-red-200 dark:border-red-900/50">
+        <h2 className="mb-1 font-semibold text-red-700 dark:text-red-400">Zona de risco — limpeza de senhas</h2>
+        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Remove senhas do histórico (os relatórios do período apagado zeram). Cadastros,
+          usuários, configurações e propagandas nunca são afetados. Faça um backup antes.
+        </p>
+
+        <div className="flex flex-col gap-4">
+          <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+            <div className="mb-2 text-sm font-medium text-slate-900 dark:text-white">
+              Limpar senhas antigas
+            </div>
+            <div className="flex items-end gap-3">
+              <Input label="Excluir senhas anteriores a" type="date" value={before}
+                onChange={(e) => setBefore(e.target.value)} />
+              <Button variant="danger" disabled={busy || !before} onClick={clearBefore}>
+                Limpar antigas
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-red-200 bg-red-50/50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
+            <div className="mb-2 text-sm font-medium text-red-700 dark:text-red-400">
+              Limpar TODAS as senhas
+            </div>
+            <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+              Zera completamente o histórico de senhas e os relatórios. Pede confirmação digitada.
+            </p>
+            <Button variant="danger" disabled={busy} onClick={clearAll}>🗑️ Limpar tudo</Button>
+          </div>
+
+          {msg && <p className="rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{msg}</p>}
+          {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+        </div>
+      </Card>
     </div>
   );
 }
@@ -603,16 +736,52 @@ function CounterRow({ counter: c, onSaved }) {
 
 // ---------------------------------------------------------------- Usuários
 
+// Checkboxes de acesso por tela
+function PermissionPicker({ value, onChange, disabled }) {
+  const toggle = (perm) =>
+    onChange(value.includes(perm) ? value.filter((p) => p !== perm) : [...value, perm]);
+
+  return (
+    <div>
+      <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+        Telas que pode acessar
+      </span>
+      <div className="flex flex-col gap-1.5 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+        {PERM_OPTIONS.map(([perm, label]) => (
+          <label key={perm} className={`flex items-center gap-2 text-sm ${disabled ? 'opacity-50' : 'cursor-pointer'} text-slate-700 dark:text-slate-200`}>
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-[var(--brand)]"
+              checked={disabled || value.includes(perm)}
+              disabled={disabled}
+              onChange={() => toggle(perm)}
+            />
+            {label}
+          </label>
+        ))}
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          {disabled
+            ? 'Superusuário acessa todas as telas, incluindo Configurações.'
+            : 'Configurações é sempre exclusiva do superusuário.'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function Users() {
   const { items, error, setError, load } = useCrud('/admin/users');
-  const [form, setForm] = useState({ name: '', username: '', password: '', role: 'attendant' });
+  const [form, setForm] = useState({
+    name: '', username: '', password: '', role: 'attendant',
+    permissions: ['atendimento', 'senhas'],
+  });
 
   const create = async (e) => {
     e.preventDefault();
     setError('');
     try {
       await api('/admin/users', { method: 'POST', body: form });
-      setForm({ name: '', username: '', password: '', role: 'attendant' });
+      setForm({ name: '', username: '', password: '', role: 'attendant', permissions: ['atendimento', 'senhas'] });
       load();
     } catch (e2) {
       setError(e2.message);
@@ -635,6 +804,11 @@ function Users() {
             <option value="attendant">Atendente</option>
             <option value="admin">Superusuário</option>
           </Select>
+          <PermissionPicker
+            value={form.permissions}
+            disabled={form.role === 'admin'}
+            onChange={(permissions) => setForm({ ...form, permissions })}
+          />
           {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
           <Button type="submit">Criar usuário</Button>
         </form>
@@ -658,13 +832,15 @@ function UserRow({ user: u, onSaved }) {
   const me = getUser();
   const isSelf = me?.id === u.id;
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ name: u.name, role: u.role, password: '' });
+  const [form, setForm] = useState({
+    name: u.name, role: u.role, password: '', permissions: u.permissions || [],
+  });
   const [error, setError] = useState('');
 
   const save = async () => {
     setError('');
     try {
-      const body = { name: form.name, role: form.role };
+      const body = { name: form.name, role: form.role, permissions: form.permissions };
       if (form.password) body.password = form.password;
       await api(`/admin/users/${u.id}`, { method: 'PUT', body });
       setEditing(false);
@@ -704,6 +880,11 @@ function UserRow({ user: u, onSaved }) {
           <Input label="Nova senha (deixe vazio para manter)" type="password" minLength={6} value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })} />
         </div>
+        <PermissionPicker
+          value={form.permissions}
+          disabled={form.role === 'admin'}
+          onChange={(permissions) => setForm({ ...form, permissions })}
+        />
         {isSelf && (
           <p className="text-xs text-slate-400 dark:text-slate-500">
             Você não pode alterar o próprio perfil (evita ficar sem superusuário).
@@ -730,7 +911,16 @@ function UserRow({ user: u, onSaved }) {
           </span>
           {isSelf && <span className="ml-2 text-xs text-slate-400">(você)</span>}
         </div>
-        <div className="text-xs text-slate-500 dark:text-slate-400">@{u.username}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">
+          @{u.username}
+          {u.role !== 'admin' && (
+            <span className="ml-2">
+              · Acessa: {(u.permissions || []).length
+                ? PERM_OPTIONS.filter(([p]) => u.permissions.includes(p)).map(([, l]) => l.split(' (')[0]).join(', ')
+                : 'nenhuma tela'}
+            </span>
+          )}
+        </div>
       </div>
       <Button variant="secondary" onClick={() => setEditing(true)}>✏️ Editar</Button>
       {!isSelf && (

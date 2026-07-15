@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import { query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAuth, requirePerm } from '../auth.js';
+import { buildPdf, buildXlsx, fetchRows, STATUS_PT, dPt, hPt } from './export.js';
 
 const router = Router();
+
+// Dashboard e Relatórios: superusuário ou permissão específica
+router.use(requireAuth, requirePerm('dashboard', 'relatorios'));
 
 // Data de "hoje" no fuso local do servidor (TZ), não em UTC
 const localToday = () => new Date().toLocaleDateString('en-CA');
@@ -14,7 +18,7 @@ const range = (req) => {
 };
 
 // Resumo para o dashboard e relatórios
-router.get('/summary', requireAuth, async (req, res, next) => {
+router.get('/summary', async (req, res, next) => {
   try {
     const [from, to] = range(req);
     const params = [from, to];
@@ -82,30 +86,21 @@ router.get('/summary', requireAuth, async (req, res, next) => {
   }
 });
 
-// Lista detalhada (com exportação CSV)
-router.get('/tickets', requireAuth, async (req, res, next) => {
+// Lista detalhada (com exportação CSV em pt-BR, data e hora separadas)
+router.get('/tickets', async (req, res, next) => {
   try {
     const [from, to] = range(req);
-    const { rows } = await query(
-      `SELECT t.code, t.customer_name, st.name AS service_name, t.status,
-              c.name AS counter_name, u.name AS attendant_name,
-              t.created_at, t.called_at, t.finished_at,
-              ROUND(EXTRACT(EPOCH FROM (t.finished_at - t.called_at)) / 60)::int AS service_min
-       FROM tickets t
-       JOIN service_types st ON st.id = t.service_type_id
-       LEFT JOIN counters c ON c.id = t.counter_id
-       LEFT JOIN users u ON u.id = t.attendant_id
-       WHERE t.created_at::date BETWEEN $1 AND $2
-       ORDER BY t.created_at DESC`,
-      [from, to]
-    );
+    const rows = await fetchRows(from, to);
     if (req.query.format === 'csv') {
-      const header = 'senha;nome;tipo;status;guiche;atendente;emitida;chamada;finalizada;duracao_min';
+      const header =
+        'Senha;Nome;Tipo;Status;Guichê;Atendente;Data Emissão;Hora Emissão;Data Chamada;Hora Chamada;Data Finalização;Hora Finalização;Duração (min)';
       const lines = rows.map((r) =>
-        [r.code, r.customer_name || '', r.service_name, r.status, r.counter_name || '',
-         r.attendant_name || '', r.created_at?.toISOString() || '',
-         r.called_at?.toISOString() || '', r.finished_at?.toISOString() || '',
-         r.service_min ?? '']
+        [r.code, r.customer_name || '', r.service_name, STATUS_PT[r.status] || r.status,
+         r.counter_name || '', r.attendant_name || '',
+         dPt(r.created_at), hPt(r.created_at),
+         dPt(r.called_at), hPt(r.called_at),
+         dPt(r.finished_at), hPt(r.finished_at),
+         r.status === 'done' && r.service_min != null ? r.service_min : '']
           .map((v) => String(v).replaceAll(';', ','))
           .join(';')
       );
@@ -114,6 +109,32 @@ router.get('/tickets', requireAuth, async (req, res, next) => {
       return res.send('﻿' + [header, ...lines].join('\n'));
     }
     res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Exportação em PDF (com logo e carimbo de geração) e Excel
+router.get('/export', async (req, res, next) => {
+  try {
+    const [from, to] = range(req);
+    const format = req.query.format;
+    if (format === 'pdf') {
+      const buf = await buildPdf({ from, to, user: req.user });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=relatorio_${from}_${to}.pdf`);
+      return res.send(buf);
+    }
+    if (format === 'xlsx') {
+      const buf = await buildXlsx({ from, to, user: req.user });
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename=relatorio_${from}_${to}.xlsx`);
+      return res.send(Buffer.from(buf));
+    }
+    res.status(400).json({ error: 'Formato inválido (use pdf ou xlsx)' });
   } catch (e) {
     next(e);
   }

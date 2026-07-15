@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { getToken, getUser } from './lib/api.js';
+import { getToken, getUser, hasPerm, homeScreen } from './lib/api.js';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
 import Totem from './pages/Totem.jsx';
@@ -10,9 +10,11 @@ import Reports from './pages/Reports.jsx';
 import Tickets from './pages/Tickets.jsx';
 import Settings from './pages/Settings.jsx';
 
-function Private({ children, adminOnly = false }) {
+function Private({ children, perm, adminOnly = false }) {
   if (!getToken()) return <Navigate to="/login" replace />;
-  if (adminOnly && getUser()?.role !== 'admin') return <Navigate to="/atendimento" replace />;
+  const user = getUser();
+  if (adminOnly && user?.role !== 'admin') return <Navigate to={homeScreen(user)} replace />;
+  if (perm && !hasPerm(perm)) return <Navigate to={homeScreen(user)} replace />;
   return children;
 }
 
@@ -24,16 +26,16 @@ export default function App() {
       <Route path="/painel" element={<Monitor />} />
       <Route path="/login" element={<Login />} />
 
-      {/* Área interna */}
+      {/* Área interna — acesso por permissão de tela */}
       <Route element={<Private><Layout /></Private>}>
-        <Route path="/atendimento" element={<Attendant />} />
-        <Route path="/senhas" element={<Tickets />} />
-        <Route path="/dashboard" element={<Private adminOnly><Dashboard /></Private>} />
-        <Route path="/relatorios" element={<Private adminOnly><Reports /></Private>} />
+        <Route path="/atendimento" element={<Private perm="atendimento"><Attendant /></Private>} />
+        <Route path="/senhas" element={<Private perm="senhas"><Tickets /></Private>} />
+        <Route path="/dashboard" element={<Private perm="dashboard"><Dashboard /></Private>} />
+        <Route path="/relatorios" element={<Private perm="relatorios"><Reports /></Private>} />
         <Route path="/configuracoes" element={<Private adminOnly><Settings /></Private>} />
       </Route>
 
-      <Route path="*" element={<Navigate to={getToken() ? '/atendimento' : '/login'} replace />} />
+      <Route path="*" element={<Navigate to={getToken() ? homeScreen(getUser()) : '/login'} replace />} />
     </Routes>
   );
 }

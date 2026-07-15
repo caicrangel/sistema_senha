@@ -18,6 +18,44 @@ export const clearSession = () => {
   localStorage.removeItem(USER_KEY);
 };
 
+// Superusuário acessa tudo; demais dependem das permissões por tela
+export const hasPerm = (perm) => {
+  const u = getUser();
+  if (!u) return false;
+  if (u.role === 'admin') return true;
+  return (u.permissions || []).includes(perm);
+};
+
+// Primeira tela que o usuário pode acessar após o login
+export const homeScreen = (u) => {
+  if (!u) return '/login';
+  if (u.role === 'admin') return '/dashboard';
+  const p = u.permissions || [];
+  if (p.includes('atendimento')) return '/atendimento';
+  if (p.includes('senhas')) return '/senhas';
+  if (p.includes('dashboard')) return '/dashboard';
+  if (p.includes('relatorios')) return '/relatorios';
+  return '/login';
+};
+
+// Baixa um arquivo autenticado (CSV, PDF, Excel, backup)
+export async function downloadFile(path, filename) {
+  const res = await fetch(`/api${path}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Erro ao gerar o arquivo');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function api(path, { method = 'GET', body, auth = true } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && getToken()) headers.Authorization = `Bearer ${getToken()}`;
