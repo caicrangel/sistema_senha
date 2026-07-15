@@ -23,6 +23,8 @@ const PERM_OPTIONS = [
   ['senhas', 'Gestão de Senhas'],
   ['dashboard', 'Dashboard'],
   ['relatorios', 'Relatórios'],
+  ['totem', 'Abrir Totem (tela pública)'],
+  ['painel', 'Abrir Painel TV (tela pública)'],
 ];
 
 // Tipo de login legível a partir do perfil/permissões do usuário
@@ -1487,7 +1489,7 @@ function Users() {
   const [profiles, setProfiles] = useState([]);
   const [form, setForm] = useState({
     name: '', username: '', password: '', role: 'attendant',
-    permissions: ['atendimento', 'senhas'], specialty_id: '',
+    permissions: ['atendimento', 'senhas', 'totem', 'painel'], specialty_id: '',
   });
 
   const loadProfiles = () => api('/admin/access-profiles').then(setProfiles).catch(() => {});
@@ -1501,7 +1503,7 @@ function Users() {
     setError('');
     try {
       await api('/admin/users', { method: 'POST', body: form });
-      setForm({ name: '', username: '', password: '', role: 'attendant', permissions: ['atendimento', 'senhas'], specialty_id: '' });
+      setForm({ name: '', username: '', password: '', role: 'attendant', permissions: ['atendimento', 'senhas', 'totem', 'painel'], specialty_id: '' });
       load();
     } catch (e2) {
       setError(e2.message);

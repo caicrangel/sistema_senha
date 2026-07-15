@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 const SECRET = process.env.JWT_SECRET || 'dev_secret';
 
 // Telas que podem ser liberadas por usuário (Configurações é sempre só do superusuário)
-export const PERMISSIONS = ['atendimento', 'senhas', 'dashboard', 'relatorios', 'medico'];
+export const PERMISSIONS = ['atendimento', 'senhas', 'dashboard', 'relatorios', 'medico', 'totem', 'painel'];
 
 export function parsePermissions(raw) {
   try {

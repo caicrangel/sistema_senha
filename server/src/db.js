@@ -165,10 +165,10 @@ export async function seed(bcrypt) {
   if (ap[0].n === 0) {
     await query(
       `INSERT INTO access_profiles (name, permissions) VALUES
-       ('Recepção', '["atendimento","senhas"]'),
+       ('Recepção', '["atendimento","senhas","totem","painel"]'),
        ('Médico', '["medico"]'),
        ('Gestão', '["dashboard","relatorios"]'),
-       ('Recepção + Gestão', '["atendimento","senhas","dashboard","relatorios"]')`
+       ('Recepção + Gestão', '["atendimento","senhas","dashboard","relatorios","totem","painel"]')`
     );
   }
   await query(
